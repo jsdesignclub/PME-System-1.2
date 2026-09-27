@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Secrets — never commit these
+.env
+.env.local
+.env.*.local
+
+# Runtime upload target (keep the directory, drop the files)
+backend/uploads/letters/*
+!backend/uploads/letters/.gitkeep
+
+# Backups
+backups/
+
+# Mobile client (Phase 2)
+.expo/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.idea/
+.vscode/
