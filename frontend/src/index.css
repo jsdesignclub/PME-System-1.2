@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   Ministry theme tokens (spec §9.1)
+   ==========================================================================
+   Tailwind v4 is configured here in CSS rather than in tailwind.config.js —
+   there is no JS config file in v4, and the spec's directory listing predates
+   that change (decision D9).
+
+   Declaring these under @theme generates the matching utilities: bg-navy,
+   text-gold, border-navy, and so on. Components reference the token name, not
+   the hex value, so a palette change is a one-line edit here.
+   ========================================================================== */
+@theme {
+  /* Headers, sidebar, primary surfaces */
+  --color-navy: #0f172a;
+
+  /* Accents, primary action buttons, active nav */
+  --color-gold: #f59e0b;
+}
+
+/* Body text, borders and muted surfaces use Tailwind's built-in `slate` scale,
+   which is deliberately not redefined here — overriding it would shadow the
+   entire default palette for one name. */
+body {
+  margin: 0;
+}

@@ -1,0 +1,11 @@
+# Defence in depth: the root .gitignore already excludes .env, but this
+# directory is the one that holds real secrets, so it carries its own rule.
+# If backend/ is ever moved, copied, or vendored on its own, this file travels
+# with it and the exclusion survives.
+
+.env
+.env.*
+!.env.example
+
+node_modules/
+*.log

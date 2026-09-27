@@ -1,0 +1,23 @@
+{
+  "name": "pme-system",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Provincial Ministry Enterprise Management System — root orchestration",
+  "type": "module",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,web -c green,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm --prefix backend run dev",
+    "dev:web": "npm --prefix frontend run dev",
+    "db:check": "node database/check-db.js",
+    "db:migrate": "npm --prefix backend run migrate",
+    "db:migrate:status": "npm --prefix backend run migrate:status",
+    "db:seed": "npm --prefix backend run seed"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

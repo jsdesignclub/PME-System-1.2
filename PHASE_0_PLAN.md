@@ -1,8 +1,8 @@
 # Phase 0 — Environment & Foundation: Detailed Plan
 
 **Parent plan:** `EXECUTION_PLAN.md` (Phase 0 of 9)
-**Status:** Planning only — nothing implemented
-**Date:** 2026-09-27
+**Status:** ✅ Complete — all seven §9 acceptance checks pass
+**Date:** 2026-09-27 (plan written) / completed 2026-09-27
 
 ---
 
@@ -28,31 +28,62 @@ Verified on the current machine on 2026-09-27, before any task ran:
 
 | Prerequisite | Required | Current status | Action if missing |
 | :-- | :-- | :-- | :-- |
-| Node.js | v18+ (spec §10.1) | **v22.3.0 — present** | None |
+| Node.js | **Vite 8 requires `^20.19.0 \|\| >=22.12.0`** | **⚠️ 22.3.0 installed — BELOW Vite 8's floor** | See §3a. Vite runs but warns; upgrade before Phase 1 |
 | npm | 9+ | **v10.8.1 — present** | None |
 | MySQL Server | 8.0+ | **8.0.34 — present and running** as Windows service `MySQL80` | None |
 | MySQL Workbench | Any recent | **8.0 — present** | None |
 | `mysql.exe` on PATH | For CLI verification | **Not on PATH — present at** `C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe` | Task 0.1 prepends it, or use Workbench |
 | Port 3306 | Free and listening | **Listening — confirmed** | Task 0.1 verifies the owning process is `mysqld` |
 | Docker Desktop | — | **Not required.** Q1 is answered: local MySQL only | None |
-| Git | Any | **Not initialized** | Task 0.2 |
+| Git | Any | **Initialized — baseline commit `c11110a`** | Done in Task 0.2 |
 
 **Q1 is answered — local MySQL, no Docker.** The whole of §6.1, §7, and the failure-mode tables below are written for a locally installed server. No `docker-compose.yml` exists and none is planned.
 
-**Open credential issue — must be resolved before Task 0.1 finishes.** The `root` password supplied for this task does **not** authenticate:
+**RESOLVED — the credential blocker (Q2).** The `root` password supplied for this task did not authenticate, and neither did a password-less login:
 
 ```text
 mysql -u root --password=****  ->  ERROR 1045 (28000): Access denied for user 'root'@'localhost'
 mysql -u root --skip-password  ->  ERROR 1045 (28000): Access denied for user 'root'@'localhost'
 ```
 
-Both a password and a password-less login are rejected, so the password is not the only thing in question. The owning process of port 3306 was confirmed to be `mysqld` (PID 4440) and the service `MySQL80` reports `Running`, so the server is genuinely the local install and not a stray container or a second instance. Resolution is one of:
+The correct password was subsequently supplied by the user and verified: `SELECT VERSION()` returns `8.0.34` as `root`. `database/bootstrap.sql` was executed, and the resulting `pme_user` account was verified **as `pme_user`** (not as root) — `8.0.34`, `@@character_set_database = utf8mb4`, and a grant set confined to `pme_system.*`. Both host rows (`localhost` and `127.0.0.1`) exist and authenticate over TCP. The real password lives only in the git-ignored `backend/.env` (D3 held — see the §9 hygiene sweep).
 
-1. Confirm the intended `root` password in MySQL Workbench's saved connection profile and re-run the check.
-2. If the password is unknown, reset it with the official `mysqld --skip-grant-tables` procedure, then re-run the check.
-3. If Workbench connects successfully but the CLI does not, the difference is the credential store, not MySQL — use the Workbench-verified value.
+### 3a. Known environment issue — Node is below Vite 8's floor
 
-**Do not proceed past the `SELECT VERSION()` step in Task 0.1 until one of these lands.** Every downstream verification in §9 depends on it.
+The `v18+` prerequisite in this table was taken from spec §10.1 and is **stale for the toolchain that was actually installed.** Vite 8 (pulled in by `npm create vite@latest`) requires `^20.19.0 || >=22.12.0`.
+
+The machine reports **Node v22.3.0**, which satisfies `^20.19.0` is false and `>=22.12.0` is false — so it is below the floor. Vite still runs and prints:
+
+```text
+You are using Node.js 22.3.0. Vite requires Node.js version 20.19+ or 22.12+. Please upgrade your Node.js version.
+```
+
+This is a **warning, not a failure** — the dev server, the production build, and the proxy all work. It is recorded here because it is a latent trap: an unsupported Node can fail at an unpredictable point later, and it should be fixed before it costs debugging time.
+
+Note that downgrading Vite to 7 does **not** resolve it — Vite 7 carries the identical `^20.19.0 || >=22.12.0` floor. Only Vite 5 or 6 accept Node 22.3.0.
+
+**The fix, and the trap in it.** This machine has several Node installations:
+
+```text
+C:\Program Files\nodejs\node.exe                                    -> v22.3.0   <- WINS
+%LOCALAPPDATA%\node-v22.22.0\node-v22.22.0-win-x64\node.exe        -> v22.22.0
+%LOCALAPPDATA%\node-v22.22.3\node-v22.22.3-win-x64\node.exe        -> v22.22.3
+```
+
+`C:\Program Files\nodejs\` is a **machine**-level `PATH` entry, so it outranks anything in the **user**-level `PATH`. Reordering the user `PATH` therefore cannot change which Node wins. The machine-level install has to be upgraded, from an elevated prompt:
+
+```powershell
+winget upgrade --id OpenJS.NodeJS.22
+```
+
+The package id is `OpenJS.NodeJS.22`, **not** `OpenJS.NodeJS.LTS` — installing the `.LTS` id resolves to a different package and silently does nothing useful. Confirm the id with `winget list` first.
+
+**Interim workaround, verified working:** run the stack on the already-present portable 22.22.3, which clears the floor:
+
+```powershell
+$env:Path = "$env:LOCALAPPDATA\node-v22.22.3\node-v22.22.3-win-x64;$env:Path"
+node -v   # v22.22.3 — Vite 8 then builds with no warning
+```
 
 ## 4. Decisions Taken in This Phase
 
@@ -66,6 +97,16 @@ Both a password and a password-less login are rejected, so the password is not t
 | D11 | Root `package.json` with `concurrently` as a dev convenience, running both application processes via one command | A ministry developer should type `npm run dev` once, not open three terminals. Purely local DX; adds no runtime dependency to `backend/`. MySQL is a Windows service, not a child process, so it is **not** a `concurrently` target — Windows services are not `SIGINT`-propagating and killing the service on Ctrl+C would be a bug, not a feature. |
 | D12 | `.env` is git-ignored; `.env.example` is committed | Standard secret hygiene. `.env.example` is the documented contract; `.env` is local state. |
 | D13 | The root orchestration script checks MySQL's reachability instead of starting it | `npm run dev` must not silently start a service, and must not require one. A preflight that reports the DB state and then proceeds is honest; a script that fails because a service is stopped is annoying. The connection test in Task 0.5 already proves the same thing more precisely. |
+
+### 4a. Deviations from this plan's literal text
+
+Three instructions in this document were followed as written and turned out to be wrong. Each was changed deliberately, and each is recorded here rather than silently corrected.
+
+| # | Plan said | What was done instead | Why |
+| :-- | :-- | :-- | :-- |
+| **D14** | `config/db.js` should set `charset: 'utf8mb4'` (Task 0.5 step 1) | Set `charset: 'UTF8MB4_UNICODE_CI'` | `utf8mb4` **is** valid to mysql2 — it resolves via `Charsets[charset.toUpperCase()]` — but it is an alias for `utf8mb4_**general**_ci` (id 45), **not** the `utf8mb4_unicode_ci` that `bootstrap.sql` creates. Verified empirically: the literal value yields `collation_connection = utf8mb4_general_ci` against a `utf8mb4_unicode_ci` database. mysql2's own default is `UTF8MB4_UNICODE_CI`, i.e. the plan's explicit setting was *worse* than omitting it. `utf8mb4_general_ci` is faster but less accurate for non-ASCII comparison, which matters for the Sinhala/Tamil sorting and lookup this system will depend on. |
+| **D15** | The migration runner connects however it likes (Task 0.6 step 2) | `multipleStatements` is enabled **only** on a dedicated migration connection, created by `createMigrationConnection()` in `backend/config/db.js`; the app pool never has it | Migration files are inherently multi-statement. Enabling stacked queries on the *application* pool would turn any single SQL-injection point into arbitrary `DROP`/`GRANT`. Keeping the flag inside one named factory means it cannot be switched on by accident elsewhere. It also keeps the `mysql2` import inside `backend/`, where `node_modules` resolves — importing `mysql2` from `database/` fails outright. |
+| **D16** | (not anticipated) | `migrate.js` strips a UTF-8 BOM from SQL files; `@rolldown/binding-win32-x64-msvc` pinned in `frontend/package.json` | Two Windows-specific traps, both found by testing rather than reasoning. (1) PowerShell 5.1's `Out-File -Encoding utf8` writes a BOM, and MySQL parses it as part of the first statement — `SQL syntax error ... near '<BOM>CREATE TABLE'`. Since these files are hand-authored on Windows, the runner tolerates the BOM rather than requiring every future author to know this. (2) Vite 8 uses rolldown, whose prebuilt native binary ships as an npm *optional* dependency that npm sometimes skips ([npm#4828](https://github.com/npm/cli/issues/4828)), producing `Cannot find native binding`. Reproduced deterministically through a full clean reinstall, so the binding is pinned explicitly. **This pin is platform-specific** — a clone on macOS or Linux will need the matching binding for that platform, or the pin removed once npm handles the optional dependency correctly. Recorded in the README. |
 
 ## 5. Target Filesystem State at End of Phase 0
 
@@ -583,29 +624,38 @@ This project lives at `E:\React project\PME System` — **the path contains a sp
 
 ## 12. Definition of Done
 
-- [ ] `MySQL80` service running, `pme_system` database exists, `utf8mb4`
-- [ ] `pme_user` created, scoped to `pme_system.*`, and verified by authenticating **as `pme_user`**
-- [ ] `database/bootstrap.sql` committed, so the setup is reproducible without Workbench
-- [ ] Git initialized, `.gitignore` in place, baseline commit made
-- [ ] `backend/` installs exactly the seven spec §10.1 runtime dependencies
-- [ ] `server.js` starts, serves JSON, and exits loudly on missing config
-- [ ] `GET /api/v1/health` returns `200` with `db: connected`
-- [ ] `.env` git-ignored, `.env.example` committed with all documented variables, no real secret in any tracked file
-- [ ] Migration runner executes with zero migrations and reports status correctly
-- [ ] `frontend/` runs on 5173 with the navy/gold theme applied and no console errors
-- [ ] Vite proxy forwards `/api` to the backend
-- [ ] `npm run dev` at the root starts api + web together and stops cleanly, leaving `MySQL80` untouched
-- [ ] All seven acceptance checks in §9 pass
-- [ ] `README.md` covers setup and troubleshooting; no undocumented step remains
-- [ ] `backend/config/db.js` and `middleware/errorHandler.js` never leak stack traces or SQL in production mode
-- [ ] No `docker-compose.yml` exists and no Docker command appears in any project script or documentation
+- [x] `MySQL80` service running, `pme_system` database exists, `utf8mb4`
+- [x] `pme_user` created, scoped to `pme_system.*`, and verified by authenticating **as `pme_user`**
+- [x] `database/bootstrap.sql` committed, so the setup is reproducible without Workbench
+- [x] Git initialized, `.gitignore` in place, baseline commit made
+- [x] `backend/` installs exactly the seven spec §10.1 runtime dependencies
+- [x] `server.js` starts, serves JSON, and exits loudly on missing config
+- [x] `GET /api/v1/health` returns `200` with `db: connected`
+- [x] `.env` git-ignored, `.env.example` committed with all documented variables, no real secret in any tracked file
+- [x] Migration runner executes with zero migrations and reports status correctly
+- [x] `frontend/` runs on 5173 with the navy/gold theme applied and no console errors
+- [x] Vite proxy forwards `/api` to the backend
+- [x] `npm run dev` at the root starts api + web together and stops cleanly, leaving `MySQL80` untouched
+- [x] All seven acceptance checks in §9 pass
+- [x] `README.md` covers setup and troubleshooting; no undocumented step remains
+- [x] `backend/config/db.js` and `middleware/errorHandler.js` never leak stack traces or SQL in production mode
+- [x] No `docker-compose.yml` exists and no Docker command appears in any project script or documentation
+
+**Verified, not assumed.** The two items easiest to tick without proving were proved:
+
+- **Error leakage** was tested by invoking `errorHandler` with a synthetic driver error carrying `err.sql`, a file path in `err.stack`, and a driver code. With `NODE_ENV=production` the body is exactly `{"success":false,"message":"Internal server error"}` — no SQL, no stack, no code. Testing this also exposed a **fail-open default**: the guard was `NODE_ENV === 'production'`, so an unset or misspelled `NODE_ENV` leaked details. It now opts *in* to detail only when `NODE_ENV === 'development'`, and unset was re-tested to confirm it is quiet.
+- **Migration runner** was exercised with throwaway migrations (`000_`, `001_`) to confirm apply, then skip on re-run, filename ordering, seed re-runnability, and orphan detection. All probe tables and rows were then dropped, leaving only `schema_migrations` with zero rows.
+- **CORS rejection** returns **403**, not the 500 that a naive `callback(new Error(...))` produces — a refused cross-origin request is a client error and must not be logged as a server fault.
+
+**One caveat on the Docker item.** `EXECUTION_PLAN.md` — the *parent* plan, which predates the Q1 decision — still describes `docker-compose.yml` and `docker compose up -d`. That document was not rewritten, because it is the historical record of the decision that Q1 later overturned, and Phase 0 should not silently edit its parent's rationale. The substantive requirement holds: no `docker-compose.yml` exists, no script invokes Docker, and `README.md` and this plan both state *why* it is absent. If you want the parent plan reconciled with reality, that is a small documentation task — say so and I will do it.
 
 ## 13. Open Questions
 
 | # | Question | Blocks | Status / default |
 | :-- | :-- | :-- | :-- |
 | **Q1** | Docker Desktop, or the local MySQL install? | Task 0.1 | **RESOLVED — local MySQL 8.0.34 via the `MySQL80` service. No Docker.** See D1. |
-| **Q2** | What is the actual `root` password, and should it be reset to a known value? | Task 0.1 step 3 | **OPEN.** The supplied password returns `ERROR 1045`, as does a password-less login. Must be answered before Task 0.1 can complete. |
+| **Q2** | What is the actual `root` password, and should it be reset to a known value? | Task 0.1 step 3 | **RESOLVED.** The correct password was supplied and verified (`SELECT VERSION()` → `8.0.34` as `root`). `bootstrap.sql` executed; `pme_user` then verified by authenticating **as `pme_user`**, on both host rows, over TCP. Not reset — the existing password was confirmed rather than replaced. |
+| **Q11** | *(new)* Node v22.3.0 is below Vite 8's `>=22.12.0` floor. Upgrade the machine install, or accept the warning? | Nothing in Phase 0; a latent risk for Phase 1+ | **OPEN — user's call.** Everything works today. The interim workaround (run on the portable v22.22.3 already on disk) is verified. Permanent fix needs an elevated `winget upgrade --id OpenJS.NodeJS.22`. See §3a. |
 | **Q8** | Tailwind v4 CSS-first theme (recommended, current major) or v3 with the spec's literal `tailwind.config.js`? | Task 0.7 | v4 |
 | **Q9** | Root `concurrently` orchestration, or two separate terminals? | Task 0.8 | Root orchestration, since the root orchestrator is additive and can be removed freely |
 | **Q10** | Is `mysql.exe` to be added to the machine `PATH` permanently, or invoked by full path throughout? | Task 0.1 step 2 | Full path in docs; adding it to the user `PATH` is a one-time convenience and needs no project decision |
