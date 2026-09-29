@@ -5,6 +5,7 @@
  *   node database/migrate.js up       apply pending migrations, in filename order
  *   node database/migrate.js status   show applied vs pending
  *   node database/migrate.js seed     re-runnable seed scripts, in filename order
+ *   node database/migrate.js seed 001 only seed files whose name starts "001"
  *
  * Every path is resolved from this file's own location, never from the shell's
  * working directory, so the runner behaves identically whether it is invoked
@@ -117,8 +118,38 @@ async function status(connection) {
   console.log(`${files.length - [...applied].filter((n) => files.includes(n)).length} pending, ${files.filter((f) => applied.has(f)).length} applied`);
 }
 
-async function seed(connection) {
-  const files = await listSqlFiles(SEEDS_DIR);
+/**
+ * Run the seed scripts.
+ *
+ * @param {import('mysql2/promise').Connection} connection
+ * @param {string} [prefix] optional filename prefix filter, e.g. "001"
+ *
+ * The filter exists for one specific accident. 002_seed_demo_users.sql resets
+ * the password of any user whose NIC it recognises, so re-running it after
+ * changing a demo account's password quietly throws that change away. With a
+ * filter, refreshing the department list without touching anyone's credentials
+ * is `node database/migrate.js seed 001`.
+ *
+ * The match is a plain prefix on the filename, so "001" selects
+ * 001_seed_departments.sql and "002_" selects 002_seed_demo_users.sql. An
+ * unmatched filter is an error rather than a silent zero-file run: "seed 0015"
+ * matching nothing is almost certainly a typo, and silently applying nothing
+ * would look like success.
+ */
+async function seed(connection, prefix) {
+  const all = await listSqlFiles(SEEDS_DIR);
+
+  const files = prefix
+    ? all.filter((name) => name.startsWith(prefix))
+    : all;
+
+  if (prefix && files.length === 0) {
+    const available = all.length > 0 ? all.map((n) => `"${n}"`).join(', ') : 'none';
+    throw new Error(
+      `no seed file matches the filter "${prefix}". Available: ${available}`,
+    );
+  }
+
   if (files.length === 0) {
     console.log('0 seeds applied (nothing to do)');
     return;
@@ -154,7 +185,8 @@ const connection = await connect().catch((error) => {
 });
 
 try {
-  await handler(connection);
+  // argv[3] only means anything to `seed`; the other commands ignore it.
+  await handler(connection, process.argv[3]);
 } catch (error) {
   console.error(`\n${error.message}`);
   process.exit(1);

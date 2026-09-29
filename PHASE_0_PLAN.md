@@ -582,7 +582,7 @@ Run in order. **All seven must pass.** `$mysql` below is `C:\Program Files\MySQL
 | :-- | :-- | :-- | :-- |
 | 1 | The service is running | `Get-Service MySQL80` | `Running` |
 | 2 | App account authenticates, and is confined | `$mysql -u pme_user -p -e "SELECT VERSION(), @@character_set_database; SHOW GRANTS FOR CURRENT_USER;"` | `8.0.34`, `utf8mb4`, grants only on `pme_system.*` |
-| 3 | Migrations run | `npm --prefix backend run migrate` | `0 migrations applied` (no errors) |
+| 3 | Migrations run | `npm --prefix backend run migrate` | `0 migrations applied` (no errors). **Corrected 2026-09-29:** the runner's actual output is `0 migrations applied (nothing to do)`. The expectation above was written before the runner had a "nothing to do" branch, and matches nothing the command can print. |
 | 4 | API boots and reaches the DB | `Invoke-RestMethod http://localhost:4000/api/v1/health` | `status=ok`, `db=connected` |
 | 5 | API fails loudly on bad config | Blank `JWT_SECRET`, restart | Non-zero exit, clear message |
 | 6 | Frontend boots with theme | `npm --prefix frontend run dev`, open `:5173` | Navy/gold shell, no console errors |

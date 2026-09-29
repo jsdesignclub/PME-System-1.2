@@ -15,7 +15,9 @@
     "db:check": "node database/check-db.js",
     "db:migrate": "npm --prefix backend run migrate",
     "db:migrate:status": "npm --prefix backend run migrate:status",
-    "db:seed": "npm --prefix backend run seed"
+    "db:seed": "npm --prefix backend run seed",
+    "db:seed:depts": "node database/migrate.js seed 001",
+    "test": "npm --prefix backend test"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

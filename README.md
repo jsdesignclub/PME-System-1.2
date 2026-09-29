@@ -2,10 +2,11 @@
 
 A modular web application for managing provincial ministry enterprises.
 
-**Status: Phase 0 (Environment & Foundation) complete.** The database, backend
-API, and frontend shell all start and talk to each other. There is no
-application logic yet — no auth, no modules, no real UI. Phase 0 exists so that
-Phase 1 can be *verified*, not merely written.
+**Status: Phase 1 (Authentication, RBAC & User Directory) complete.** You can log
+in, and the API enforces role-based access against a real user directory with a
+full audit trail behind it. There is still no application logic — no mail, no
+minutes, no UI beyond the shell. Phase 1 exists so that everything later is
+*verified*, not merely written.
 
 ---
 
@@ -13,7 +14,7 @@ Phase 1 can be *verified*, not merely written.
 
 | Tool | Required | Notes |
 | :-- | :-- | :-- |
-| Node.js | `^20.19.0 \|\| >=22.12.0` | Required by Vite 8. Check with `node -v`. |
+| Node.js | `^20.19.0 \|\| >=22.12.0` | Required by Vite 8 (Phase 3). The current `v22.3.0` runs the backend and its tests fine — see below. |
 | npm | 9+ | Ships with Node. |
 | MySQL Server | 8.0+ | Installed as the Windows service **`MySQL80`**. |
 | MySQL Workbench | any recent | Optional; the CLI is enough. |
@@ -113,11 +114,27 @@ To stop, press `Ctrl+C` once. Both processes shut down and `MySQL80` keeps
 running — the database is a Windows service, not a child process, and `Ctrl+C`
 must never take it down.
 
-### 6. Verify
+### 6. Apply migrations and seed the demo accounts
+
+```powershell
+npm run db:migrate      # 4 files: departments, users, refresh_tokens, audit_logs
+npm run db:seed         # 7 departments + 8 demo personas
+```
+
+Both are safe to re-run. Migrations skip anything already applied; seeds use
+`ON DUPLICATE KEY UPDATE`. See **Demo credentials** below for what the seed
+contains and one important warning about re-running it.
+
+### 7. Verify
 
 ```powershell
 Invoke-RestMethod http://localhost:4000/api/v1/health   # status=ok, db=connected
 Invoke-RestMethod http://localhost:5173/api/v1/health   # same JSON, via the Vite proxy
+
+# And that auth actually works end to end:
+$body = @{ nic_no = '881234560V'; password = 'PmeDemo@2026' } | ConvertTo-Json
+(Invoke-RestMethod -Method Post -Uri http://localhost:4000/api/v1/auth/login `
+   -Body $body -ContentType application/json).token
 ```
 
 ---
@@ -150,6 +167,20 @@ Run from the repository root:
 | `npm run db:migrate` | Apply pending migrations |
 | `npm run db:migrate:status` | Show applied vs pending |
 | `npm run db:seed` | Run re-runnable seed scripts |
+| `npm run db:seed:depts` | Re-run **only** the department seed (see Demo credentials) |
+| `npm test` | Backend test suite — 73 tests, needs MySQL running |
+
+Backend-only commands, from `backend/`:
+
+| Command | Effect |
+| :-- | :-- |
+| `npm start` | Start the API alone (`:4000`) |
+| `npm run dev` | Start the API with `nodemon` |
+| `npm run hash-password -- "some password"` | Generate a bcrypt hash for a seed file |
+| `npm test` | The same 73 tests |
+
+The test suite boots the app on an **ephemeral port**, so it never collides with
+a `npm run dev` you already have running. It does need `MySQL80`.
 
 ---
 
@@ -198,15 +229,29 @@ PME System/
 ├── database/
 │   ├── bootstrap.sql         # creates pme_system + pme_user; run once as root
 │   ├── check-db.js           # read-only reachability probe
-│   ├── migrate.js            # migration + seed runner (up | status | seed)
+│   ├── migrate.js            # runner: up | status | seed [prefix]
 │   ├── migrations/           # 001_*.sql, applied in filename order
+│   │   ├── 001_departments.sql
+│   │   ├── 002_users.sql     # incl. the 8-value role ENUM
+│   │   ├── 003_refresh_tokens.sql
+│   │   └── 004_audit_logs.sql
 │   └── seeds/                # re-runnable .sql
+│       ├── 001_seed_departments.sql   # 7 departments
+│       └── 002_seed_demo_users.sql    # 8 personas, literal bcrypt hashes
 ├── backend/
-│   ├── server.js             # entrypoint; validates config, then listens
-│   ├── config/db.js          # mysql2 pool + testConnection()
-│   ├── config/jwt.js         # JWT config validation
-│   ├── middleware/errorHandler.js
-│   ├── routes/index.js       # mounts GET /api/v1/health
+│   ├── app.js                # the Express app — no listen(), so tests can import it
+│   ├── server.js             # entrypoint: validates config, then listens
+│   ├── config/
+│   │   ├── db.js             # mysql2 pool + testConnection()
+│   │   └── jwt.js            # config validation + sign/verify
+│   ├── controllers/          # auth, user, department, audit
+│   ├── middleware/           # auth, role, audit, errorHandler
+│   ├── models/               # user, department, refreshToken, audit
+│   ├── routes/               # index.js registry + one router per module
+│   ├── scripts/hash-password.js     # bcrypt hash generator for seeds
+│   ├── tests/                # 73 tests, node --test
+│   │   └── helpers/          # app boot, fixtures (self-cleaning)
+│   ├── utils/                # password, permissions, validate, transaction
 │   ├── uploads/letters/      # upload target (Phase 2)
 │   ├── .env.example          # committed contract
 │   └── .env                  # git-ignored; the only place real secrets live
@@ -218,6 +263,11 @@ PME System/
         └── main.jsx
 ```
 
+`app.js` and `server.js` are separate on purpose (D18). `app.js` builds the
+Express app and **does not listen**; `server.js` validates configuration and
+calls `listen`. The test suite imports `app.js` and starts it on port `0`, so a
+test run never needs port 4000 to be free.
+
 ### Migrations
 
 Numbered filename prefixes (`001_`, `002_`) guarantee ordering regardless of
@@ -227,6 +277,31 @@ failure partway through a multi-statement file may leave earlier statements in
 place — the recovery path is a corrective migration, not a rollback. Use
 `npm run db:migrate:status` to see what is applied; it also flags a migration
 recorded as applied whose file has since been deleted.
+
+### Seeds
+
+`node database/migrate.js seed [prefix]` takes an optional filename prefix, which
+is a prefix match: `seed 001` applies only `001_seed_departments.sql`. This
+exists for one specific accident — `002_seed_demo_users.sql` resets the password
+of any account whose NIC it recognises, so re-seeding after changing a demo
+password quietly throws that change away. An unmatched prefix is an **error**,
+not a silent zero-file run, because `seed 0015` matching nothing is a typo and
+silently applying nothing would look like success.
+
+### Password hashing
+
+Passwords are hashed with `bcryptjs` at cost factor **12** (`BCRYPT_ROUNDS` in
+`backend/utils/password.js` — a constant, not an env var, so no environment can
+quietly weaken its own hashing). A bcrypt hash cannot be computed in SQL, so the
+demo seed carries the hash as a literal. Generate one with:
+
+```powershell
+npm --prefix backend run hash-password -- "some password"
+```
+
+The seed file's `ON DUPLICATE KEY UPDATE` clause lists only the columns a seed
+owns. In particular it never lists `is_active`, so re-seeding cannot silently
+reactivate a deactivated account.
 
 ---
 
@@ -258,7 +333,15 @@ recorded as applied whose file has since been deleted.
 | `Cannot find module 'express'` | Install failed | Check network/proxy, re-run `npm install` |
 | `ERR_REQUIRE_ESM` / import errors | `"type": "module"` mismatch with file syntax | This project uses ESM throughout |
 | 503 from `/api/v1/health` but the server is "up" | **Expected** — the endpoint is correctly reporting a database problem | Check `npm run db:check` |
-| 403 `Origin ... is not allowed by CORS` | A request came from an origin other than `localhost:5173` | Expected during development; widen `ALLOWED_ORIGINS` in `server.js` only if genuinely needed |
+| 403 `Origin ... is not allowed by CORS` | A request came from an origin other than `localhost:5173` | Expected during development; widen `ALLOWED_ORIGINS` in `app.js` only if genuinely needed |
+| 401 `Invalid or expired token` on a request you believe is valid | The token was signed with a different `JWT_SECRET` than the one now in `.env` | Common after regenerating the secret. Every previously issued token dies; log in again |
+| 401 `Invalid or expired refresh token` right after logging in | Normal after a refresh **rotation** — the old refresh token is revoked on use | Use the *new* `refresh_token` from the most recent response. Reusing a spent one is exactly what rotation is meant to catch |
+| 403 on a user directory call, logged in as `ADMIN` | The account's `is_active` is `FALSE`, or the row is not `ADMIN` | Check both: `SELECT nic_no, role, is_active FROM users;` |
+| 409 `Cannot deactivate the last active administrator` | Deactivating that user would leave nobody able to log in | Create a second `ADMIN` first, then deactivate one of them |
+| Login always 401 for a seeded persona | `npm run db:seed` was run after you changed the demo password, resetting it to `PmeDemo@2026` | Expected. See the warning under **Demo credentials**; `npm run db:seed:depts` avoids it |
+| A seeded persona is 403 `deactivated` | The seed deliberately never sets `is_active`, so a deactivated account stays deactivated across re-seeds | `UPDATE users SET is_active = TRUE WHERE nic_no = '881234560V';` |
+| `npm test` fails with `ECONNREFUSED` or `ER_ACCESS_DENIED` | `MySQL80` is stopped, or `backend/.env` is wrong — the suite needs the same database the app does | `Get-Service MySQL80`, then `npm run db:check` |
+| `node --test` errors with `Cannot find module '.../tests'` | Node resolved `tests/` as a module path | Use the glob: `node --test "tests/**/*.test.js"` (what `npm test` does) |
 
 ### Frontend and toolchain
 
@@ -309,26 +392,129 @@ Confirm the package id first with `winget list`. Upgrading in place is
 preferable to reordering `PATH`, and preferable to installing a second copy
 beside the old one.
 
+> **This does not block Phase 1 or 2.** `v22.3.0` runs the API and all 73 backend
+> tests. It only blocks **Phase 3**, when Vite 8 first starts. Do it before
+> starting Phase 3, not before continuing this one.
+
 ---
 
 ## Demo credentials
 
-None yet. Phase 0 creates an empty database — there are no users to log in
-with, and no login form to log in to. User accounts, roles, password hashing,
-and JWT issuance arrive in **Phase 1**, seeded by `database/seeds/`.
+`npm run db:seed` creates **8 demo personas — one per role** — all sharing the
+password **`PmeDemo@2026`**.
+
+| NIC | Role | Department |
+| :-- | :-- | :-- |
+| `881234560V` | `ADMIN` | Administration |
+| `881234561V` | `SECRETARY` | Provincial Secretary's Office |
+| `881234562V` | `AO` | Provincial Secretary's Office |
+| `881234563V` | `CHIEF_CLERK` | Administration |
+| `881234564V` | `SUBJECT_CLERK` | Education |
+| `881234565V` | `OFFICER` | Education |
+| `881234566V` | `MINOR_STAFF` | Provincial Secretary's Office |
+| `881234567V` | `TRANSPORT_OFFICER` | Transport |
+
+These are **published demo credentials, on purpose.** They are not secrets. Never
+reuse this password for a real deployment, and never point a real deployment at
+this seed file.
+
+> **Re-running `npm run db:seed` resets the password of any account whose NIC
+> appears above**, back to `PmeDemo@2026`. If you have changed a demo account's
+> password and want to keep it, run `npm run db:seed:depts` instead — that applies
+> only `001_seed_departments.sql` and never touches a user row. (Deactivation is
+> also preserved: `is_active` is deliberately absent from the seed's
+> `ON DUPLICATE KEY UPDATE` clause, so re-seeding cannot silently reactivate a
+> locked-out account.)
+
+There is no login form yet — the frontend is still a shell. Use the API directly:
+
+```powershell
+$body = @{ nic_no = '881234566V'; password = 'PmeDemo@2026' } | ConvertTo-Json
+$session = Invoke-RestMethod -Method Post -Uri http://localhost:4000/api/v1/auth/login `
+             -Body $body -ContentType application/json
+
+$session.token          # access token — send as: Authorization: Bearer <token>
+$session.refresh_token  # exchange at POST /api/v1/auth/refresh
+$session.user           # profile, per spec §7.1
+
+# Now prove the role is actually enforced:
+Invoke-RestMethod -Uri http://localhost:4000/api/v1/users `
+  -Headers @{ Authorization = "Bearer $($session.token)" }
+# 403, because MINOR_STAFF is not ADMIN
+```
 
 ---
 
-## Coming Next — Phase 1
+## API reference (Phase 1)
 
-Per `EXECUTION_PLAN.md`, expected to cover authentication and the core schema:
+All paths are prefixed `/api/v1`. **The entire unauthenticated surface of the
+API is `GET /health`, `POST /auth/login` and `POST /auth/refresh`.** Everything
+else requires `Authorization: Bearer <access token>`.
 
-- First migration set: users, roles, and permissions
-- Password hashing (`bcryptjs`) and login
-- JWT access + refresh token issuance
-- Auth middleware and role-based route protection
-- `seed_users.sql` and the first real demo accounts
-- Backend test suite bootstrap in `backend/tests/`
+| Method | Path | Who | Notes |
+| :-- | :-- | :-- | :-- |
+| `GET` | `/health` | anyone | Not behind auth on purpose — a health check that needs a token cannot report that the token service is down. `503` if the database is unreachable |
+| `POST` | `/auth/login` | anyone | → `{ token, refresh_token, user }`. Stores only a SHA-256 hash of the refresh token |
+| `POST` | `/auth/refresh` | anyone | Body `{ refresh_token }`. **Rotates** — the old token is revoked and cannot be reused |
+| `POST` | `/auth/logout` | signed in | Revokes the given refresh token. Idempotent |
+| `GET` | `/auth/me` | signed in | Profile **and** the resolved permission list for the caller's role |
+| `GET` | `/auth/permissions` | signed in | The permission list alone, so the frontend can hide what the user cannot do |
+| `GET` | `/users` | `ADMIN` | Filters: `search`, `role`, `department_id`, `is_active`, `limit`, `offset` |
+| `POST` | `/users` | `ADMIN` | `409` on duplicate NIC or email |
+| `GET` | `/users/:id` | `ADMIN` | |
+| `PATCH` | `/users/:id` | `ADMIN` | An admin **cannot change their own role** (400) |
+| `DELETE` | `/users/:id` | `ADMIN` | **Deactivates**, never deletes (D23) — the row must outlive the account's history. 400 on self, 409 if it would leave no active admin |
+| `GET` | `/departments` | signed in | Open to every signed-in user, not just admins — the department picker needs it (Q14) |
+| `GET` | `/departments/:id` | signed in | |
+| `POST` | `/departments` | `ADMIN` | Code is uppercased; `409` on duplicate |
+| `PATCH` | `/departments/:id` | `ADMIN` | |
+| `GET` | `/audit` | `ADMIN` | Filters: `action`, `entity_type`, `entity_id`, `user_id`, `from`, `to`, `limit`, `offset`. **Omits `action_delta`** — a 200-row list of JSON blobs is a heavy payload |
+| `GET` | `/audit/:id` | `ADMIN` | The single-row view, and the **only** endpoint that returns `action_delta` |
+
+### Status codes worth knowing
+
+| Code | Means |
+| :-- | :-- |
+| `401` + `Invalid NIC number or password` | Login failed. **Byte-identical** whether the NIC is unknown or the password is wrong, and both take the same time — the API does not tell you which accounts exist |
+| `403` + `... deactivated ...` | Login reached *only* because the password was correct, so it can safely say why |
+| `401` + `Account is deactivated` | A token that was valid until the account was switched off. Takes effect on the very next request |
+| `401` vs `403` | `401` = "who are you / your session is over" → clear the session and go to the login page. `403` = "you are known, but not allowed" → show an error. No token is always `401`, never `403`, so a bad token never reveals whether a resource exists |
+
+### Security notes
+
+- **No login rate limiting yet.** Parent plan task 4.3, Phase 4. This is a real
+  gap, not an oversight — on a public deployment, put a rate limiter in front of
+  `POST /auth/login` before exposing it.
+- **`password_hash` is excluded by the SQL select list**, not filtered in
+  JavaScript. A serializer that strips it is one `SELECT *` away from leaking it.
+  The single exception is `userModel.findByCredentials`, which exists for the
+  login path and appears nowhere else.
+- **Audit rows are immutable through the API** — there is no write route, and
+  `auditModel` exports no update or delete. The database does **not** enforce it:
+  `pme_user` has `UPDATE` and `DELETE` on `pme_system.*`, and adding the
+  `BEFORE UPDATE`/`BEFORE DELETE` triggers that would require a `TRIGGER` grant.
+  That is D42, and Phase 4 task 4.6 closes it.
+- **A JWT holds no authority.** Payload is `{ sub, role, type }` and the role is
+  display-only; every request re-reads the user row, which is why deactivating
+  someone takes effect immediately rather than when their token happens to
+  expire. Nothing time-varying (`department_id`, permissions) is ever baked in.
+
+---
+
+## Coming Next — Phase 2
+
+Per `EXECUTION_PLAN.md`, expected to cover the mail register and the backend
+module that Phase 3 will draw:
+
+- Mail register, dispatch and file-close workflows
+- Official minutes and duty-chart matching (the routing engine behind
+  `SUBJECT_CLERK`)
+- Document upload — `multer` and `backend/uploads/letters/` are already wired
+- The Phase 3 frontend: login page, then the eight dashboards
+
+**Before Phase 3:** Node must be upgraded to `^20.19.0 || >=22.12.0` for Vite 8.
+The current `v22.3.0` is fine for the backend and its tests, but Vite 8 will
+refuse to start. See **If `node -v` is older than Vite 8 requires** above.
 
 ---
 

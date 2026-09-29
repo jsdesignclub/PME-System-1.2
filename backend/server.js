@@ -1,14 +1,24 @@
+/**
+ * Bootstrap. Starts the server; builds nothing.
+ *
+ * D18 — this file used to contain the whole Express app, which meant importing
+ * it started a listening socket. That made it impossible for the test suite to
+ * import the app without also standing up a server on port 4000. The app now
+ * lives in app.js and is exported from there; this file only does the things
+ * that must happen once, in production, and never in a test:
+ *
+ *   - validate configuration and fail loudly if it is incomplete
+ *   - prove the database is reachable before accepting traffic
+ *   - listen, and shut down cleanly on a signal
+ */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import dotenv from 'dotenv';
-import express from 'express';
-import cors from 'cors';
 
+import app from './app.js';
 import { pool, testConnection } from './config/db.js';
 import { getJwtConfig } from './config/jwt.js';
-import { errorHandler, notFound } from './middleware/errorHandler.js';
-import routes from './routes/index.js';
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(moduleDir, '.env'), quiet: true });
@@ -60,39 +70,6 @@ function assertConfigIsComplete() {
 }
 
 assertConfigIsComplete();
-
-const app = express();
-
-// Behind a reverse proxy in any real deployment, so req.ip and secure
-// cookies reflect the client rather than the proxy.
-app.set('trust proxy', 1);
-
-app.use(express.json({ limit: '1mb' }));
-
-// The Vite dev server is proxied (Task 0.7 step 5), so in development the
-// browser sees a single origin and this rarely fires. It matters at
-// deployment, and for `curl` against :4000.
-const ALLOWED_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173'];
-app.use(
-  cors({
-    origin(origin, callback) {
-      // No Origin header = same-origin, curl, or a server-side call. Not a
-      // cross-origin request, so there is nothing to reject.
-      if (!origin || ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
-      // 403, not 500: a refused cross-origin request is the caller's mistake.
-      // Without an explicit status the error handler would report a server
-      // fault and log it as one.
-      const error = new Error(`Origin ${origin} is not allowed by CORS`);
-      error.status = 403;
-      callback(error);
-    },
-  }),
-);
-
-app.use('/api/v1', routes);
-
-app.use(notFound);
-app.use(errorHandler);
 
 const PORT = Number(process.env.PORT) || 4000;
 

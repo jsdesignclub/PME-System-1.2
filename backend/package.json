@@ -15,7 +15,8 @@
     "migrate": "node ../database/migrate.js up",
     "migrate:status": "node ../database/migrate.js status",
     "seed": "node ../database/migrate.js seed",
-    "test": "node --test tests/"
+    "hash-password": "node scripts/hash-password.js",
+    "test": "node --test \"tests/**/*.test.js\""
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
