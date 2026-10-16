@@ -17,7 +17,8 @@ backend/uploads/letters/*
 # Backups
 backups/
 
-# Mobile client (Phase 2)
+# Mobile client (Phase 5 — not started; this is here so the ignore is in place
+# before the first Expo run, not because anything mobile exists yet)
 .expo/
 
 # Logs

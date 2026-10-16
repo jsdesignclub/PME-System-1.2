@@ -5,18 +5,12 @@ import { defineConfig } from 'vite'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // GitHub Pages serves the app from /PME-System-1.2/; the deploy workflow sets
+  // VITE_BASE to that path. Unset locally, so `npm run dev` stays at "/".
+  base: process.env.VITE_BASE || '/',
   server: {
     port: 5173,
-    // The frontend calls relative paths like /api/v1/... and Vite forwards them
-    // to the backend. This is the important line in this file: without it every
-    // development request is cross-origin and depends on CORS behaving
-    // correctly. With it the browser sees a single origin, and CORS only
-    // matters at deployment.
-    proxy: {
-      '/api': {
-        target: 'http://localhost:4000',
-        changeOrigin: true,
-      },
-    },
+    host: true,
+    strictPort: true,
   },
 })

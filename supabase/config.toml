@@ -1,0 +1,20 @@
+# PME System — Supabase project configuration.
+#
+# This file is what lets the Supabase CLI find the project and the Edge
+# Functions under supabase/functions. It is DELIBERATELY small: only the keys
+# this repo actually depends on are set, and everything else falls back to the
+# CLI's own defaults. A hand-written full config drifts from whatever CLI
+# version a machine happens to have, and a stale key is a deploy that fails for
+# a reason that has nothing to do with the functions.
+
+project_id = "pme-system"
+
+# The two functions that back the admin "create a login, then complete the
+# profile" flow. `verify_jwt = true` is the default and is kept explicit: each
+# function additionally checks that the CALLER is an ADMIN, but the gateway
+# check runs first and rejects an unauthenticated request before any code does.
+[functions.create-user]
+verify_jwt = true
+
+[functions.list-unprofiled-users]
+verify_jwt = true

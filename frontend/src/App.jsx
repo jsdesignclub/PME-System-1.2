@@ -1,65 +1,172 @@
 /**
- * Phase 0 shell.
+ * Routing, and the two gates in front of it.
  *
- * This exists to prove exactly one thing: that the ministry theme tokens in
- * index.css are wired up and the dev server is serving. It is deliberately not
- * a login form, a dashboard, or any module UI — Phase 0 contains no
- * application logic, and a Phase 0 build that grows a feature screen has failed
- * Phase 0. Phase 1 replaces this file wholesale.
+ * Providers live here rather than in main.jsx because `<AuthProvider>` must be
+ * INSIDE `<BrowserRouter>`: `RequireAuth` and `RequirePermission` both read from
+ * `useAuth()` and redirect with `<Navigate>`, and `useNavigate` throws outside a
+ * router. Mounting auth in main.jsx and the router in App.jsx is the arrangement
+ * that makes one of them wrong, and the failure is a blank screen with a console
+ * error rather than anything a test would describe.
+ *
+ * MailProvider is nested inside AuthProvider for the same reason one level down:
+ * it reads the session to decide whether to prefetch anything.
  */
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+
+import { AuthProvider } from './context/AuthContext.jsx';
+import { LanguageProvider } from './context/LanguageContext.jsx';
+import { MailProvider } from './context/MailContext.jsx';
+import { NotificationProvider } from './context/NotificationContext.jsx';
+import { useAuth } from './hooks/useAuth.js';
+import { Layout } from './components/common/Layout.jsx';
+import { Spinner } from './components/common/Spinner.jsx';
+import { ToastProvider } from './components/common/Toast.jsx';
+import { ADMIN_ROLES } from './utils/permissions.js';
+import AdminPage from './pages/AdminPage.jsx';
+import DashboardPage from './pages/DashboardPage.jsx';
+import ForbiddenPage from './pages/ForbiddenPage.jsx';
+import LoginPage from './pages/LoginPage.jsx';
+import MailDetailPage from './pages/MailDetailPage.jsx';
+import MailRegistryPage from './pages/MailRegistryPage.jsx';
+import NewMailPage from './pages/NewMailPage.jsx';
+import NotFoundPage from './pages/NotFoundPage.jsx';
+import OfficerPage from './pages/OfficerPage.jsx';
+
+/**
+ * Gate for the signed-in area.
+ *
+ * `loading` is checked BEFORE the redirect on purpose. On a hard refresh the
+ * session is read from localStorage but the permission list is not yet known;
+ * redirecting during that window would bounce a signed-in user to /login and
+ * then straight back, which on a slow connection looks like a failed login.
+ */
+function RequireAuth() {
+  const { session, loading } = useAuth();
+
+  if (loading) return <Spinner label="Restoring your session" />;
+  if (!session?.token) return <Navigate to="/login" replace />;
+  return <Layout />;
+}
+
+/**
+ * What the administration area needs, and how it can be satisfied.
+ *
+ * `ADMIN_AREA_PERMISSION` is a named constant rather than a literal in the check
+ * because the same string has to appear in the 403 message, and two literals is
+ * how a refusal message starts telling people the wrong reason. It is named once
+ * here and referenced by both.
+ */
+const ADMIN_AREA_PERMISSION = 'UPDATE_DUTY_CHART';
+
+/**
+ * The ways in, as ALTERNATIVES, because that is what they are.
+ *
+ * A holder of either one gets through. Listing them as a conjunction — "for
+ * ADMIN" *and* "requires UPDATE_DUTY_CHART" — describes an area nobody with a
+ * single credential could open, and tells a refused Administrative Officer that only
+ * the administrator gets in, when a subject clerk demonstrably does too.
+ *
+ * This is also the only writer of `/forbidden`'s router state, so the gate and the
+ * message it produces cannot drift apart: the page renders this array rather than
+ * naming the requirements itself.
+ */
+const ADMIN_AREA_ALTERNATIVES = Object.freeze([
+  Object.freeze({ kind: 'role', value: ADMIN_ROLES }),
+  Object.freeze({ kind: 'permission', value: ADMIN_AREA_PERMISSION }),
+]);
+
+/**
+ * Gate for the administration surface.
+ *
+ * Not `RequirePermission`, and not `RequireRole` alone. The admin area holds four
+ * tabs with two different authorities behind them (D73):
+ *
+ *   - Users, Departments, Audit are guarded server-side by `requireAdmin`, which
+ *     checks the `role` column. `MANAGE_USERS` and friends are NOT permissions in
+ *     this system, so `hasPermission('MANAGE_USERS')` is false for every user
+ *     including the administrator. Gating on those names would hide Administration
+ *     from the one role that owns it, with nothing to indicate why.
+ *
+ *   - Duty Charts is writable by any holder of `ADMIN_AREA_PERMISSION`, which is a
+ *     real permission and is granted to `SUBJECT_CLERK` as well as `ADMIN`. A
+ *     subject clerk who cannot reach the page cannot maintain the duty chart the
+ *     matcher runs on (D68), so the route must admit them.
+ *
+ * So the route admits EITHER an admin role OR the duty-chart permission, and the
+ * page decides per tab: `AdminPage` hides the admin-only tabs from a non-admin
+ * rather than rendering a tab that would 403 on every request. A user with neither
+ * lands on /forbidden, which is told the alternatives rather than being told only
+ * about the role.
+ *
+ * A convenience guard, not the control. `requireAdmin` and the duty permission
+ * checks in the controllers are.
+ */
+function RequireAdminArea({ children }) {
+  const { user, permissions, loading } = useAuth();
+
+  if (loading) return <Spinner label="Restoring your session" />;
+
+  const permitted =
+    ADMIN_ROLES.includes(user?.role) || permissions.includes(ADMIN_AREA_PERMISSION);
+
+  if (!permitted) {
+    return <Navigate to="/forbidden" replace state={{ alternatives: ADMIN_AREA_ALTERNATIVES }} />;
+  }
+
+  return children;
+}
+
 export default function App() {
   return (
-    <div className="min-h-screen bg-slate-100">
-      <header className="bg-navy text-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-          <div>
-            <p className="text-xs tracking-widest text-slate-300 uppercase">
-              Provincial Ministry
-            </p>
-            <h1 className="text-xl font-semibold">Enterprise Management System</h1>
-          </div>
-          <span className="rounded-full bg-gold px-3 py-1 text-xs font-medium text-navy">
-            Phase 0
-          </span>
-        </div>
-      </header>
+    // BASE_URL mirrors Vite's `base`: "/" locally, "/PME-System-1.2/" on
+    // GitHub Pages, so client-side routes survive the sub-path.
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
+      {/* LanguageProvider is OUTSIDE AuthProvider on purpose: the sign-in page
+          is translated too, and it must render before a session exists. */}
+      <LanguageProvider>
+        <AuthProvider>
+          {/* Inside AuthProvider because the feed is scoped to the signed-in
+              user, and above the router because the bell lives in the shell that
+              every route renders inside. */}
+          <NotificationProvider>
+            <ToastProvider>
+              <MailProvider>
+                <Routes>
+                  <Route path="/login" element={<LoginPage />} />
 
-      <main className="mx-auto max-w-5xl px-6 py-10">
-        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-navy">Foundation is in place</h2>
-          <p className="mt-2 text-slate-600">
-            The API is reachable at <code className="text-slate-800">/api/v1/health</code>.
-            Requests from this page are forwarded to the backend by the Vite dev
-            server proxy, so the browser sees a single origin and CORS does not
-            apply during development.
-          </p>
+                  <Route element={<RequireAuth />}>
+                    <Route path="/" element={<DashboardPage />} />
+                    <Route path="/mail" element={<MailRegistryPage />} />
+                    <Route path="/mail/new" element={<NewMailPage />} />
+                    {/* After `/mail/new`, so "new" is never read as an id. */}
+                    <Route path="/mail/:id" element={<MailDetailPage />} />
+                    <Route path="/officers" element={<OfficerPage />} />
+                    <Route path="/officers/:id" element={<OfficerPage />} />
 
-          <button
-            type="button"
-            className="mt-6 rounded-md bg-gold px-4 py-2 font-medium text-navy transition hover:brightness-95"
-          >
-            Primary action
-          </button>
-        </div>
+                    <Route
+                      path="/admin"
+                      element={
+                        <RequireAdminArea>
+                          <AdminPage />
+                        </RequireAdminArea>
+                      }
+                    />
 
-        <dl className="mt-8 grid gap-4 sm:grid-cols-3">
-          {[
-            { label: 'Frontend', value: 'localhost:5173' },
-            { label: 'API', value: 'localhost:4000' },
-            { label: 'Database', value: 'MySQL80 :3306' },
-          ].map(({ label, value }) => (
-            <div
-              key={label}
-              className="rounded-lg border border-slate-200 bg-white p-4"
-            >
-              <dt className="text-xs tracking-wide text-slate-500 uppercase">
-                {label}
-              </dt>
-              <dd className="mt-1 font-mono text-sm text-slate-800">{value}</dd>
-            </div>
-          ))}
-        </dl>
-      </main>
-    </div>
-  )
+                    {/* Inside the authenticated shell, so the header and sidebar are
+                        present: a 403 with no way to sign out is a trap. */}
+                    <Route path="/forbidden" element={<ForbiddenPage />} />
+                  </Route>
+
+                  {/* Outside it, deliberately. An unauthenticated visitor to a bad
+                      URL gets the login page rather than a 403 that reveals the
+                      route exists and is guarded. */}
+                  <Route path="*" element={<NotFoundPage />} />
+                </Routes>
+              </MailProvider>
+            </ToastProvider>
+          </NotificationProvider>
+        </AuthProvider>
+      </LanguageProvider>
+    </BrowserRouter>
+  );
 }

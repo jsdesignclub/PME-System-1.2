@@ -1,27 +1,736 @@
 @import "tailwindcss";
 
 /* ==========================================================================
-   Ministry theme tokens (spec §9.1)
+   Ministry design tokens — DARK MODE (UI UXdesign.md)
    ==========================================================================
    Tailwind v4 is configured here in CSS rather than in tailwind.config.js —
-   there is no JS config file in v4, and the spec's directory listing predates
-   that change (decision D9).
+   there is no JS config file in v4 (decision D9).
 
-   Declaring these under @theme generates the matching utilities: bg-navy,
-   text-gold, border-navy, and so on. Components reference the token name, not
-   the hex value, so a palette change is a one-line edit here.
+   Declaring these under @theme generates the matching utilities: bg-surface,
+   text-brand, border-brand, and so on. Components reference the token name, not
+   the hex value, so a palette change is an edit here plus the literal hexes in
+   `chartTheme.js` (SVG attributes cannot take Tailwind classes).
+
+   THE PALETTE IS THE CLIENT'S SPEC, NOT A DEFAULT. From §visual direction:
+
+      #050714  canvas            #0A0D1A  main surface (cards, header)
+      #111526  raised            #161A2F  soft / hover surface
+      #7357ED  accent (purple)   #A084FF  accent at text weight
+      #4F8CFF  info blue         #39D6A3  success   #F6B94C warning
+      #FF6375  critical          #F3F5FB / #A5AEC2 / #667089  text at three weights
+
+   WHY THE RAMPS LOOK "BACKWARDS" COMPARED TO TAILWIND'S DEFAULTS
+   ----------------------------------------------------------------------
+   Every semantic ramp here runs 50 → 900 from DARKEST TINT to LIGHTEST TEXT,
+   which is the inverse of the light-theme reading of the same numbers. That is
+   not an accident and it is not a mistake a reader should "correct":
+
+     - `bg-slate-50` used to be the palest grey; on a dark canvas it is now the
+       faint lift under a card. `text-slate-700` used to be near-black body
+       copy; it is now the near-white body copy. The NUMBER stayed with the ROLE
+       because the role is what every call site refers to — 48 borders, 91 body
+       strings, 33 fills. Rewriting those call sites to a second vocabulary
+       would have been a churn of ~250 edits to arrive at the same pixels.
+     - The one place the ramp has to serve two roles is documented per step
+       below, and the handful of call sites where a step cannot do both
+       (a button background vs. a chip's text colour) are resolved explicitly in
+       their component, not by compromising the ramp.
+
+   Only the steps actually referenced in the app are declared, which shadows
+   those steps alone and leaves the rest of the built-in scale intact.
    ========================================================================== */
-@theme {
-  /* Headers, sidebar, primary surfaces */
-  --color-navy: #0f172a;
 
-  /* Accents, primary action buttons, active nav */
-  --color-gold: #f59e0b;
+/* The mobile drawer is translated in from the left. Its backdrop fades up over the
+   same 300ms so the dim and the panel arrive together — a backdrop that appears
+   instantly under a sliding panel reads as two separate events and looks like a
+   glitch rather than one gesture.
+
+   A keyframe rather than an opacity transition because the backdrop is mounted and
+   unmounted with the drawer; a transitioned opacity would need it to already be in
+   the DOM at opacity 0, which means it would sit over the page permanently.
+
+   Named `pme-` because Tailwind emits keyframes into the global namespace and a
+   bare `fadeIn` would collide with anything else in the build that wants it. */
+@keyframes pme-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
-/* Body text, borders and muted surfaces use Tailwind's built-in `slate` scale,
-   which is deliberately not redefined here — overriding it would shadow the
-   entire default palette for one name. */
+/* ==========================================================================
+   Dashboard entrance animations
+   ==========================================================================
+   Two keyframes, both `pme-`-prefixed for the reason above — Tailwind emits
+   keyframes into the global namespace, and this app also loads a chart library
+   that ships its own.
+
+   `pme-rise-in` carries the four KPI cards onto the page: a short translate
+   with the opacity alongside it, so a card arrives rather than appearing. It is
+   used as an ANIMATION rather than a transition because the cards mount with
+   the page and a transition would have nothing to transition FROM.
+
+   `pme-row-in` is the table stagger. The delay is not written into the class
+   list — it cannot be, because it depends on the row's index — so each row sets
+   `--pme-i` and reads it back:
+
+       <tr style={{ '--pme-i': index }} class="animate-row-in">
+
+   `--pme-i` is a bare unitless number, which is the only form `calc()` can
+   multiply; writing `animation-delay: calc(var(--pme-i) * 45ms)` is what turns
+   it into a time. A custom property rather than a second inline `animation-delay`
+   because the delay is derived from the index, and keeping the arithmetic in the
+   stylesheet means a row's markup cannot disagree about what its own stagger is.
+
+   Both are animation-fill `both` so a row is invisible before its delay elapses
+   rather than flashing at full opacity and then animating — which is the whole
+   reason the stagger reads as a cascade instead of a flicker.
+   ========================================================================== */
+@keyframes pme-rise-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes pme-row-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@theme {
+  /* --- Canvas and surfaces --------------------------------------------- */
+  /* Four steps of dark, each readable as a step against the next. The page sits
+     on `canvas`, a card sits on `surface` (one step up), a hovered row or an
+     inset note lifts to `slate-50`, and the sidebar/inputs take `slate-100`. */
+  --color-canvas: #050714;
+  --color-surface: #0a0d1a;
+  --color-raised: #111526;
+  --color-soft: #161a2f;
+
+  /* --- Accent: electric purple (spec: #7357ED) ---------------------------
+     Normal polarity, unlike the neutrals: 50–300 are the dark tints and the
+     hairline purples, 400–600 the vivid accent, 700–900 the deep ends used for
+     BUTTON HOVER, which must stay dark enough for `text-white` on top. The
+     consequence is that a chip's label cannot use 700/800/900 on a dark tint —
+     those call sites take `text-brand-400` instead. */
+  --color-brand-50: #151130;
+  --color-brand-100: #1d1743;
+  --color-brand-200: #2a2260;
+  --color-brand-300: #3d3290;
+  --color-brand-400: #8b73f3; /* the accent at TEXT weight */
+  --color-brand-500: #7c63f0;
+  --color-brand-600: #7357ED; /* measured — the accent */
+  --color-brand-700: #5b41c4;
+  --color-brand-800: #472f9c;
+  --color-brand-900: #33206f;
+
+  /* Flat aliases, because the design uses the accent and the ink at one weight
+     each. `bg-brand` and `bg-brand-600` are the same colour; the short form is
+     what a component actually wants to read. */
+  --color-brand: #7357ED;
+  --color-ink: #f3f5fb;
+
+  /* --- Text at three weights ------------------------------------------- */
+  --color-muted: #a5aec2;
+  --color-faint: #667089;
+
+  /* --- Neutrals: violet-tinted dark grey --------------------------------
+     50 → 300 are surfaces, fills and hairlines (dark); 400 → 900 are text
+     (light). The two halves meet at 300/400, which is where a border stops
+     being a border and a glyph starts being a glyph. */
+  --color-slate-50: #0e1120; /* hover lift, inset note */
+  --color-slate-100: #141830; /* sidebar, muted fill, soft border */
+  --color-slate-200: #1a1f38; /* chip fill, progress track */
+  --color-slate-300: #232a47; /* the default hairline border */
+  --color-slate-400: #5a6478; /* faint / disabled text, rings */
+  --color-slate-500: #7c869c; /* labels */
+  --color-slate-600: #9aa4b8; /* secondary copy, placeholders */
+  --color-slate-700: #c3cadb; /* body copy */
+  --color-slate-800: #e4e8f2; /* emphasised copy */
+  --color-slate-900: #f3f5fb; /* headings — matches --color-ink */
+
+  /* --- Semantic accents --------------------------------------------------
+     Used by the chips, the charts and the status rail. The `red/amber/green`
+     ramps are inverted in the same way as the neutrals: 50–300 dark tints and
+     hairlines, 500–900 increasingly light TEXT. */
+  --color-success: #39d6a3;
+  --color-warning: #f6b94c;
+  --color-critical: #ff6375;
+  --color-info: #4f8cff;
+
+  /* Solid destructive button. `bg-red-500` cannot carry `text-white` once the
+     red ramp is inverted (a light tint under white text), so the two call sites
+     that draw a destructive button name this instead. */
+  --color-danger: #d8324a;
+  --color-danger-hover: #b92640;
+
+  --color-red-50: #2a1418;
+  --color-red-100: #3a1a1f;
+  --color-red-200: #55242b;
+  --color-red-300: #7a3239;
+  --color-red-400: #b0394a;
+  --color-red-500: #e5484d;
+  --color-red-600: #ff6375;
+  --color-red-700: #ff8a97;
+  --color-red-800: #ffb0bb;
+  --color-red-900: #ffd3d9;
+
+  --color-amber-50: #2a1f0d;
+  --color-amber-100: #3a2a11;
+  --color-amber-200: #523d18;
+  --color-amber-300: #7a5a22;
+  --color-amber-400: #f6b94c;
+  --color-amber-500: #f0a93a;
+  --color-amber-600: #fbc66b;
+  --color-amber-700: #f9d08b;
+  --color-amber-800: #fbdcab;
+  --color-amber-900: #fef0d9;
+
+  --color-green-50: #0a2620;
+  --color-green-100: #0e3329;
+  --color-green-200: #124736;
+  --color-green-300: #1b6b4f;
+  --color-green-400: #2fb688;
+  --color-green-500: #39d6a3;
+  --color-green-600: #6ee7c1;
+  --color-green-700: #97efd4;
+  --color-green-800: #bff7e7;
+  --color-green-900: #dcfcf3;
+
+  --color-purple-50: #1d1230;
+  --color-purple-100: #271840;
+  --color-purple-200: #352158;
+  --color-purple-300: #4c3181;
+  --color-purple-400: #7c4fd6;
+  --color-purple-500: #9161f2;
+  --color-purple-600: #a98af7;
+  --color-purple-700: #c1a8fa;
+  --color-purple-800: #d9c9fc;
+  --color-purple-900: #efe7ff;
+
+  --color-blue-50: #0d1a2e;
+  --color-blue-100: #112340;
+  --color-blue-200: #173058;
+  --color-blue-300: #1f4a8a;
+  --color-blue-400: #4f8cff;
+  --color-blue-500: #6ea1ff;
+  --color-blue-600: #93b9ff;
+  --color-blue-700: #b7ceff;
+  --color-blue-800: #dbe6ff;
+  --color-blue-900: #eef3ff;
+
+  /* --- Typography ------------------------------------------------------
+     Inter is named first but NOT bundled: D71 keeps the dependency list closed,
+     so it is used if the machine has it and silently skipped if not. The
+     Sinhala/Tamil faces follow the Latin ones rather than preceding them, so
+     those scripts still resolve to the platform fonts D70 depends on.
+
+     JetBrains Mono is named the same way — first, unbundled — and is what
+     `font-mono` resolves to for figures, reference numbers and code. */
+  --font-sans:
+    "Inter", "DM Sans", "Segoe UI Variable Text", "Segoe UI", system-ui,
+    -apple-system, "Helvetica Neue", Arial, "Iskoola Pota", "Nirmala UI",
+    "Noto Sans Sinhala", "Noto Sans Tamil", "Abhaya Libre", "Latha", "Kokila",
+    "Vijaya", sans-serif;
+
+  --font-mono:
+    "JetBrains Mono", "Cascadia Mono", "Cascadia Code", "Consolas",
+    "SFMono-Regular", ui-monospace, monospace;
+
+  /* --- Shape (spec: 8px controls, 16px cards and panels, pill chips) ---- */
+  --radius-btn: 8px;
+  --radius-card: 16px;
+  --radius-panel: 16px;
+
+  /* Elevation in the dark: shadows are BLACK, not violet, and one step deeper
+     than they were, because a dark card on a darker page separates by border
+     first and shadow second. */
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.45);
+  --shadow-pop: 0 16px 40px rgb(0 0 0 / 0.55);
+}
+
+/* ==========================================================================
+   Dashboard entrance animations, exposed as utilities
+   ==========================================================================
+   Declared after `@theme` so they win the cascade against Tailwind's own
+   utility layer, and named `animate-*` so a component asks for the animation
+   rather than restating the keyframe name. Keeping the name in ONE place is what
+   makes the reduced-motion rule below a selector rather than a search for every
+   animation in the app.
+
+   No `will-change` here, deliberately. It is the usual advice for animating
+   `transform`, and applying it to a 25-row table means 25 permanently promoted
+   layers — memory for a paint hint the browser applies on its own during the
+   animation anyway.
+
+   The reduced-motion override is not optional politeness for the KPI cards; it
+   is the one that matters for the table. A cascade delays each row's first
+   appearance, so a user with reduced-motion who is NOT overridden sees a table
+   that fills in row by row — every row fully readable but arriving separately,
+   which is the exact thing that setting asks them not to have.
+   ========================================================================== */
+@utility animate-rise-in {
+  animation: pme-rise-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@utility animate-row-in {
+  animation: pme-row-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--pme-i, 0) * 45ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise-in,
+  .animate-row-in {
+    animation: none;
+  }
+}
+
 body {
   margin: 0;
+  -webkit-font-smoothing: antialiased;
+  /* Painted here as well as in Layout so the first frame before React mounts is
+     the dark canvas rather than a white flash of the browser default. */
+  background-color: var(--color-canvas);
+}
+
+/* ==========================================================================
+   Native dropdowns (select / option)
+   ==========================================================================
+   Tailwind's preflight resets a form control to `background-color: transparent`
+   and `color: inherit`. On a `<select>` that is a bug rather than a reset, and
+   it shows up twice:
+
+     1. The CLOSED control has no fill of its own, so it reads as a flat outline
+        floating on the card instead of a field you can click into. The tokens
+        above already state the intent — "the sidebar/inputs take `slate-100`" —
+        so that is the fill used here.
+     2. The OPEN list is worse than cosmetic. Chromium paints the option popup
+        using the control's own background and the rows' inherited colour, so a
+        transparent control under the page's light inherited text produces
+        white text on a white popup: a list of invisible rows. `color-scheme:
+        dark` on :root is NOT sufficient — it colours the popup chrome (border,
+        scrollbar) but the rows keep the inherited colour, which is the light
+        one the page set.
+
+   These sit in `@layer base`, deliberately NOT unlayered like the rules around
+   them, because a utility has to be able to win: `disabled:bg-slate-50
+   disabled:text-slate-500` on the department select must still be able to grey
+   the field, and it can only do that if base loses to `@layer utilities`.
+   ========================================================================== */
+@layer base {
+  select {
+    background-color: var(--color-slate-100);
+    color: var(--color-ink);
+  }
+
+  /* The rows. `raised` is one step above a card so the open list separates from
+     the field it dropped out of rather than blending into it. */
+  option,
+  optgroup {
+    background-color: var(--color-raised);
+    color: var(--color-ink);
+  }
+
+  /* The row under the cursor. Left alone, Windows paints this in the system
+     accent, which on a machine themed blue is a second accent colour this
+     design does not use. */
+  option:checked {
+    background-color: var(--color-brand);
+    color: #fff;
+  }
+}
+
+/* ==========================================================================
+   Sinhala / Tamil rendering (D70)
+   ==========================================================================
+   No web font is bundled. Spec §9.2's tree lists none, and adding one to fix a
+   box of tofu on the demo machine would change the dependency list the plan
+   treats as a constraint (D71).
+
+   The stack below is the OS one, and it is declared twice on purpose:
+
+      - inside `--font-sans` above, so letter text in the UI renders with the
+        platform's own Sinhala/Tamil font rather than falling back to a Latin
+        default. It sits AFTER the Latin faces so those still render in Inter
+        when the machine has it, and these scripts still fall through to the
+        platform font — the two sets do not overlap, so one stack serves both;
+      - the slip's own stack, so the PRINTED document is unaffected by whatever
+        the browser picked for the page around it.
+
+   The screen stack is deliberately NOT repeated in a `body` rule: Tailwind's
+   preflight already applies `--font-sans` to the root and it inherits, so a
+   second literal copy here would be a second thing to forget to update.
+
+   The risk is stated rather than hidden: this depends on the fonts being
+   installed on the machine doing the printing. A print that shows tofu fails the
+   acceptance check, and the fix on a machine that lacks them is an OS font, not
+   a code change. Bundling a webfont is the Phase 4 decision.
+   ========================================================================== */
+:root {
+  --font-sinhala-tamil: "Iskoola Pota", "Nirmala UI", "Noto Sans Sinhala",
+    "Noto Sans Tamil", "Abhaya Libre", "Latha", "Kokila", "Vijaya", sans-serif;
+
+  /* The whole app renders on a dark canvas, so native form controls,
+     scrollbars, the `<input type="date">` picker and the browser's own
+     autofill chrome have to be told the scheme. Without it a date field drawn
+     by this stylesheet in dark still opens a white OS calendar over the page —
+     the one bright rectangle in the design. */
+  color-scheme: dark;
+}
+
+/* ==========================================================================
+   The minute slip (Task 3.19)
+   ==========================================================================
+   Two halves, and they are separate on purpose:
+
+   1. `.print-only` hides the slip on screen and shows it in print. It is
+      `hidden` (display:none) rather than `opacity:0` so a screen reader does not
+      read a document the user cannot see, and so it takes no layout space.
+   2. `.no-print` hides the application chrome in print. Header, sidebar, filter
+      bar, buttons and toasts all carry it.
+
+   A4 portrait with a 15mm margin. `@page` is set once, globally, rather than
+   per component: the browser reads it while laying out the document, not while
+   rendering a box, so a scoped rule does not reliably take effect.
+   ========================================================================== */
+.print-only {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 15mm;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  /* The screen theme is dark and paper is not. The chrome is already hidden
+     above; this catches anything of the app's own content that escapes it, so a
+     stray registry page sent to a printer comes out as dark ink on white rather
+     than pale grey on white. `!important` because it has to beat the utility
+     classes on the elements themselves. */
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  .print-only {
+    display: block;
+  }
+
+  /* The shell collapses to a single column so the slip is not laid out inside
+     the sidebar's grid track. The app's flex/grid structure would otherwise
+     constrain the printed width to whatever the screen layout allowed. */
+  .app-shell {
+    display: block !important;
+  }
+
+  .minute-slip {
+    color: #000;
+    font-size: 11pt;
+    line-height: 1.45;
+  }
+
+  .slip-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8mm;
+    padding-bottom: 3mm;
+    border-bottom: 1.5pt solid #000;
+  }
+
+  .slip-brand {
+    display: flex;
+    align-items: center;
+    gap: 4mm;
+  }
+
+  .slip-ministry {
+    margin: 0;
+    font-size: 8pt;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .slip-title {
+    margin: 0;
+    font-size: 16pt;
+    font-weight: 700;
+  }
+
+  .slip-reference {
+    margin: 0;
+    text-align: right;
+    font-size: 9pt;
+  }
+
+  .slip-reference div {
+    display: flex;
+    justify-content: flex-end;
+    gap: 2mm;
+  }
+
+  .slip-reference dt {
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #333;
+  }
+
+  .slip-reference dd {
+    margin: 0;
+    font-weight: 600;
+  }
+
+  .slip-section {
+    margin-top: 5mm;
+  }
+
+  .slip-heading {
+    margin: 0 0 2mm;
+    font-size: 9pt;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border-bottom: 0.5pt solid #999;
+    padding-bottom: 1mm;
+  }
+
+  .slip-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5mm 6mm;
+    margin: 0;
+  }
+
+  .slip-field-wide {
+    grid-column: 1 / -1;
+  }
+
+  .slip-field {
+    display: flex;
+    gap: 2mm;
+    align-items: baseline;
+  }
+
+  .slip-field dt {
+    min-width: 28mm;
+    font-size: 8.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #333;
+  }
+
+  .slip-field dd {
+    margin: 0;
+    font-weight: 600;
+  }
+
+  /* `white-space: pre-line` and nothing else. The minutes are text, never
+     markup (D66), and a clerk's line breaks have to survive to paper. */
+  .slip-minutes {
+    margin: 3mm 0 0;
+    padding: 3mm;
+    border-left: 1.5pt solid #000;
+    white-space: pre-line;
+    /* The bilingual stack again, explicitly, so a browser that resolved the
+       body font to a Latin face for this block cannot do so here. */
+    font-family: var(--font-sinhala-tamil);
+  }
+
+  .slip-empty {
+    color: #555;
+    font-style: italic;
+  }
+
+  .slip-author {
+    margin: 2mm 0 0;
+    font-size: 9pt;
+    font-weight: 600;
+    text-align: right;
+  }
+
+  .slip-signatures {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8mm;
+    margin-top: 14mm;
+  }
+
+  .slip-signature-rule {
+    margin: 0;
+    border-top: 0.75pt solid #000;
+  }
+
+  .slip-signature-role {
+    margin: 1.5mm 0 0;
+    font-size: 9pt;
+    font-weight: 600;
+  }
+
+  .slip-signature-hint {
+    margin: 0;
+    font-size: 8pt;
+    color: #555;
+  }
+
+  .slip-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 4mm;
+    margin-top: 10mm;
+    padding-top: 2mm;
+    border-top: 0.5pt solid #999;
+    font-size: 8pt;
+    color: #333;
+  }
+
+  /* The guarantee that is actually claimed (D67): a block is never split across
+     a page boundary. Exactly one page is NOT claimed — a long endorsement
+     decides that, and no CSS can promise otherwise. An orphaned heading at the
+     foot of a page is the artefact that looks like a mistake, and this is what
+     prevents it. */
+  .slip-avoid-break,
+  .slip-signatures > div {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .slip-heading {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  /* Links and images must not print their own artefacts. A printed URL under
+     the subject line is noise, and the browser's default is to print the href
+     after the text. */
+  .minute-slip a {
+    text-decoration: none;
+    color: #000;
+  }
+
+  /* ----------------------------------------------------------------------
+     The registry printout (the "Print / Save as PDF" button, and Ctrl+P on
+     the registry). Same reasoning as the slip: black on white, nothing that
+     belongs only to the screen. Drawn in the shared A4 portrait page box, so
+     the nine columns are tight on purpose — a smaller type and tighter cell
+     padding buy the width back without asking the clerk to read landscape.
+     ---------------------------------------------------------------------- */
+  .registry-print {
+    color: #000;
+    font-size: 8.5pt;
+    line-height: 1.35;
+  }
+
+  .registry-print-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 8mm;
+    padding-bottom: 3mm;
+    border-bottom: 1.5pt solid #000;
+  }
+
+  .registry-print-ministry {
+    margin: 0;
+    font-size: 8pt;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .registry-print-title {
+    margin: 0;
+    font-size: 15pt;
+    font-weight: 700;
+  }
+
+  .registry-print-meta {
+    margin: 0;
+    text-align: right;
+    font-size: 8.5pt;
+  }
+
+  .registry-print-meta div {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1.5mm;
+  }
+
+  .registry-print-meta dt {
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #333;
+  }
+
+  .registry-print-meta dd {
+    margin: 0;
+    font-weight: 600;
+  }
+
+  .registry-print-filters {
+    margin: 3mm 0 4mm;
+    font-size: 8.5pt;
+    color: #333;
+  }
+
+  .registry-print-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 8pt;
+  }
+
+  .registry-print-table th,
+  .registry-print-table td {
+    border: 0.5pt solid #999;
+    padding: 1.1mm 1.5mm;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .registry-print-table thead {
+    /* The header repeats on every page, so a page 3 is still readable. */
+    display: table-header-group;
+  }
+
+  .registry-print-table thead th {
+    background: #eee;
+    font-size: 7.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  /* A row split across a page boundary is the artefact that looks like a
+     mistake; keep each one intact. */
+  .registry-print-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .registry-print-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 4mm;
+    margin-top: 5mm;
+    padding-top: 2mm;
+    border-top: 0.5pt solid #999;
+    font-size: 8pt;
+    color: #333;
+  }
 }

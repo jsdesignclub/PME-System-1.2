@@ -1,0 +1,155 @@
+-- ============================================================================
+-- patch_central_clerk.sql
+--
+-- Two changes to mail intake:
+--
+-- 1. FIX — a SUBJECT_CLERK could not file a letter into a department other than
+--    their own. The intake form (D70) makes `department_id` a routing choice:
+--    the clerk picks the department named on the envelope, which is frequently
+--    NOT the clerk's own desk. The clerk then hit:
+--
+--      403  42501  new row violates row-level security policy for table "mail_records"
+--
+--    The INSERT passed its WITH CHECK. The refusal came from PostgREST's
+--    `return=representation`: it re-reads the inserted row through the SELECT
+--    policy (mail_read), which only showed a SUBJECT_CLERK rows whose
+--    `department_id` equalled their own (or was NULL, or assigned to them). A
+--    letter routed to another department was invisible to the clerk the instant
+--    it was created, so the write appeared to fail. mail_update, mail_delete and
+--    minutes_write ALREADY grant a clerk their own logged letters via
+--    `created_by_user_id = p.id`, regardless of department; mail_read was the
+--    one policy missing that clause.
+--
+-- 2. FEATURE — the central intake clerk. A SUBJECT_CLERK flagged with
+--    `profiles.is_central_clerk` handles intake for EVERY department: they read,
+--    forward and record the AO's minutes for letters in any department, exactly
+--    as an ordinary clerk may for their own. Confidential letters stay hidden,
+--    exactly as for any other clerk. The flag only ever widens a SUBJECT_CLERK;
+--    it grants nothing to any other role.
+--
+-- Idempotent: safe to re-run.
+-- ============================================================================
+
+-- 1. The flag -----------------------------------------------------------------
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS is_central_clerk BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- 2. Helper -------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.is_central_clerk()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT COALESCE(
+    (SELECT role = 'SUBJECT_CLERK' AND is_central_clerk
+       FROM public.profiles WHERE id = auth.uid()),
+    FALSE
+  );
+$$;
+
+-- 3. mail_records — read, update ---------------------------------------------
+DROP POLICY IF EXISTS mail_read   ON public.mail_records;
+DROP POLICY IF EXISTS mail_update ON public.mail_records;
+
+-- READ: the central clerk sees everything; an ordinary clerk sees what they
+-- logged (any department), their own department, and direct assignments.
+CREATE POLICY mail_read ON public.mail_records FOR SELECT TO authenticated USING (
+  EXISTS (
+    SELECT 1 FROM public.profiles p
+    WHERE p.id = auth.uid()
+      AND (
+        p.role IN ('ADMIN','SECRETARY','CHIEF_CLERK')
+        -- AO: only letters forwarded to them, plus any they have written a
+        -- minute on (so a submit does not 404 the page under their feet).
+        OR (p.role = 'AO' AND (
+          mail_records.status::text = 'Forwarded to AO'
+          OR EXISTS (
+            SELECT 1 FROM public.official_minutes om
+            WHERE om.mail_record_id = mail_records.id
+              AND om.author_user_id = p.id
+          )
+        ))
+        OR (p.role = 'SUBJECT_CLERK' AND (
+          p.is_central_clerk
+          OR mail_records.created_by_user_id = p.id
+          OR mail_records.department_id = p.department_id
+          OR mail_records.assigned_officer_id = p.id
+        ))
+        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER') AND mail_records.assigned_officer_id = p.id)
+      )
+      AND NOT (p.role IN ('SUBJECT_CLERK','OFFICER','TRANSPORT_OFFICER') AND mail_records.priority = 'Confidential')
+  )
+);
+
+-- UPDATE: USING is the OLD row, WITH CHECK is the NEW row. SUBJECT_CLERK moves
+-- a letter through Logged -> Forwarded to AO -> Forwarded to Subject.
+CREATE POLICY mail_update ON public.mail_records FOR UPDATE TO authenticated USING (
+  EXISTS (
+    SELECT 1 FROM public.profiles p
+    WHERE p.id = auth.uid()
+      AND (
+        p.role IN ('ADMIN','SECRETARY','CHIEF_CLERK','AO')
+        OR (p.role = 'SUBJECT_CLERK'
+            AND (p.is_central_clerk
+                 OR mail_records.department_id = p.department_id
+                 OR mail_records.created_by_user_id = p.id)
+            AND mail_records.status::text IN ('Logged','Forwarded to AO','Forwarded to Subject'))
+        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER')
+            AND mail_records.assigned_officer_id = p.id
+            AND mail_records.status::text IN ('Assigned','In Progress'))
+      )
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.profiles p
+    WHERE p.id = auth.uid()
+      AND (
+        p.role IN ('ADMIN','SECRETARY','CHIEF_CLERK','AO')
+        OR (p.role = 'SUBJECT_CLERK'
+            AND (p.is_central_clerk
+                 OR mail_records.department_id = p.department_id
+                 OR mail_records.created_by_user_id = p.id))
+        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER')
+            AND mail_records.assigned_officer_id = p.id)
+      )
+  )
+);
+
+-- 4. official_minutes — a clerk recording the AO's minute on their behalf -----
+DROP POLICY IF EXISTS minutes_write ON public.official_minutes;
+
+CREATE POLICY minutes_write ON public.official_minutes FOR INSERT TO authenticated WITH CHECK (
+  auth.uid() = author_user_id
+  OR (
+    recorded_by_user_id = auth.uid()
+    AND EXISTS (
+      SELECT 1 FROM public.mail_records m
+      JOIN public.profiles p ON p.id = auth.uid()
+      WHERE m.id = mail_record_id
+        AND p.role = 'SUBJECT_CLERK'
+        AND m.status::text = 'Forwarded to AO'
+        AND (p.is_central_clerk OR m.department_id = p.department_id OR m.created_by_user_id = p.id)
+    )
+  )
+);
+
+
+-- ============================================================================
+-- QUICK SANITY CHECK after applying
+-- ============================================================================
+-- The column exists:
+-- SELECT column_name FROM information_schema.columns
+--  WHERE table_schema='public' AND table_name='profiles' AND column_name='is_central_clerk';
+--
+-- The policies now on mail_records:
+-- SELECT policyname, cmd FROM pg_policies
+--  WHERE schemaname='public' AND tablename='mail_records' ORDER BY policyname;
+--   expect: mail_delete, mail_insert, mail_read, mail_update
+--
+-- Promote the Provincial Secretary's Office clerk to central clerk:
+-- UPDATE public.profiles SET is_central_clerk = TRUE
+--  WHERE email = 'jsdesignclub2@gmail.com';
+--
+-- As that clerk, filing a letter into department 2 (or any other) now returns
+-- 201 instead of 403 42501, and the letter is listed for them.

@@ -9,15 +9,12 @@
     "node": ">=18"
   },
   "scripts": {
-    "dev": "concurrently -n api,web -c green,magenta \"npm:dev:api\" \"npm:dev:web\"",
-    "dev:api": "npm --prefix backend run dev",
-    "dev:web": "npm --prefix frontend run dev",
+    "dev": "npm --prefix frontend run dev",
     "db:check": "node database/check-db.js",
-    "db:migrate": "npm --prefix backend run migrate",
-    "db:migrate:status": "npm --prefix backend run migrate:status",
-    "db:seed": "npm --prefix backend run seed",
     "db:seed:depts": "node database/migrate.js seed 001",
-    "test": "npm --prefix backend test"
+    "db:demo": "node database/demo-reset.js",
+    "setup:office": "powershell -NoProfile -ExecutionPolicy Bypass -File setup-office.ps1",
+    "setup:supabase": "powershell -NoProfile -ExecutionPolicy Bypass -File setup-supabase.ps1"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

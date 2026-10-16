@@ -1,0 +1,150 @@
+-- ============================================================================
+-- 008_day_stamp_counters.sql — the sequence behind DS/YYYY/MM/NNNN (Module 1)
+-- ============================================================================
+-- Spec §2, as designed in PHASE_2_PLAN.md Task 2.4.
+--
+-- The day stamp is the one identifier in this system a human reads aloud, cites
+-- in a file, and copies into a paper register. DS/2026/09/0001 has to mean one
+-- specific letter forever, which makes the requirements stricter than they look:
+--
+--   - no gaps   -- a number that is skipped reads as a lost letter, and a lost
+--                  letter in a government registry is a real problem
+--   - no repeats -- the uq_mail_day_stamp UNIQUE on mail_records is the backstop
+--                  that turns a logic error into a 409 rather than a duplicate
+--   - per month  -- the sequence restarts at 0001 each month, so a stamp always
+--                  names the month its letter was RECEIVED
+--
+-- The counter table is what makes "no gaps" achievable. An in-memory counter
+-- cannot: it restarts at 1 on every process restart, and it cannot be rolled
+-- back with the letter that failed to insert. A row in the database can do
+-- both, because the increment and the mail_records insert share one
+-- transaction (D53).
+-- ============================================================================
+
+-- The backticks around `year_month` are REQUIRED, not stylistic. YEAR_MONTH is
+-- a RESERVED word in MySQL 8.0 -- it is the INTERVAL unit in
+-- `INTERVAL 1 YEAR_MONTH` -- and a reserved word cannot be a bare column name:
+--
+--     CREATE TABLE t (year_month CHAR(7))   ->  ERROR 1064
+--     CREATE TABLE t (`year_month` CHAR(7)) ->  ok
+--
+-- Confirmed against information_schema.KEYWORDS, where YEAR_MONTH has
+-- RESERVED = 1 (YEAR and MONTH, the two words it is built from, are both
+-- RESERVED = 0). The error is not about the CHECK constraint and not about the
+-- collation; the bare identifier alone fails, in the DDL and in every later
+-- SELECT and WHERE.
+--
+-- So every reference in this file and in backend/utils/dayStampGenerator.js is
+-- backticked. The alternative was to rename the column to dodge the keyword --
+-- `period`, `ym`, `year_month_key` -- and that was rejected deliberately: the
+-- one row in this table is literally 'YYYY-MM', and a column called `period`
+-- that is a string is a worse trade than remembering backticks that a syntax
+-- error will point at on the first unquoted use. A reserved-word collision
+-- fails loudly at the query, which is the only kind of bug worth having.
+CREATE TABLE IF NOT EXISTS day_stamp_counters (
+  `year_month` CHAR(7)     NOT NULL PRIMARY KEY,   -- 'YYYY-MM'
+  last_seq     INT UNSIGNED NOT NULL DEFAULT 0,
+  CONSTRAINT chk_ym_format CHECK (`year_month` REGEXP '^[0-9]{4}-[0-9]{2}$')
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- `year_month` is CHAR(7), not a DATE.
+--
+-- It is tempting to store this as a DATE or a YEAR-MONTH pair, and both are
+-- worse. A DATE brings along a day component that is always the 1st and never
+-- read, and invites someone to write the real receipt date into it by mistake.
+-- Two columns invite '2026-9' alongside '2026-09' existing as two rows, and the
+-- sequence silently forks into two independent counters for one month -- each
+-- starting at 0001, both legal to the CHECK, both unique, and a duplicate
+-- stamp waiting to happen. A single CHAR(7) key in one exact format makes that
+-- unrepresentable rather than merely discouraged.
+--
+-- CHAR rather than VARCHAR for the same reason: MySQL stores a fixed-width
+-- CHAR(7) inline with no length prefix, and a CHAR(7) holding anything other
+-- than 7 characters is padded or truncated in ways that would be a bug. The
+-- CHECK below rejects those cases before they can be written, so CHAR is the
+-- correct choice for a value whose length is known and fixed.
+--
+-- One consequence of CHAR was verified rather than assumed, and it is worth
+-- recording because the obvious guess about it is wrong. MySQL strips trailing
+-- spaces when STORING a CHAR value, so '2026-10 ' does not reach the CHECK as
+-- eight characters to be refused -- it arrives as '2026-10' and is accepted as
+-- correct. Verified: inserting '2026-10 ' stores and returns exactly
+-- [2026-10], length 7. The same stripping is why the earlier trailing-space
+-- probe collided with an existing '2026-09' row as a PRIMARY KEY duplicate
+-- rather than raising a CHECK violation.
+--
+-- So the CHECK is validating a real format -- 'nonsense' and '2026-9' are both
+-- refused, with ERROR 1406 and ERROR 3819 respectively -- and CHAR's
+-- space-stripping is a silent normalisation on top of it that happens to point
+-- the same way. That is the benign direction for this column: a stray trailing
+-- space from a hand-entered key becomes the right key, not a second key that
+-- forks the month's sequence. The width stays pinned to 7 rather than left
+-- generous, because a wider CHAR would introduce padding that a future reader
+-- might come to depend on.
+--
+-- COLLATE is utf8mb4_unicode_ci, inherited from the table default, which makes
+-- the PRIMARY KEY comparison case-insensitive. That is deliberate and harmless:
+-- digits and a hyphen have no case, so a case-insensitive comparison of a
+-- 'YYYY-MM' key can only ever match strings that were already identical. It is
+-- worth stating rather than leaving to be wondered about, because the same
+-- collation on a VARCHAR section_name is doing real work and someone will
+-- eventually assume this one is doing the same thing.
+--
+-- chk_ym_format exists because CHAR(7) accepts 'nonsense' -- seven characters,
+-- right length, wrong everything. A malformed key creates a SECOND sequence for
+-- what should be one month: '2026-9' and '2026-09' are different strings, so
+-- each gets its own row, each starts at 0001, and both mint DS stamps that
+-- look valid. The UNIQUE on mail_records does not catch that, because
+-- 'DS/2026-9/0001' and 'DS/2026-09/0001' are different strings to it too.
+--
+-- What the CHECK does NOT do is validate the calendar. '2026-13' and '2026-00'
+-- are well-formed by this constraint and are accepted, because checking that
+-- the month is 01-12 is the generator's job, not the schema's. That split is
+-- deliberate and is the reason to keep the regex narrow: a CHECK that also
+-- enforced the month range would be a second, differently-worded copy of a rule
+-- that formatYearMonth() in dayStampGenerator.js already applies at the only
+-- place a month can enter the system. Two wordings of one rule is two chances
+-- to disagree. The regex's job is the narrower one -- refusing anything that is
+-- not YYYY-MM at all, so no second key can be minted for an existing month.
+--
+-- This is the only place a CHECK constraint is doing work the application
+-- cannot, and it is worth being clear about why. dayStampGenerator formats the
+-- key from a Date it has already validated, so in practice the constraint never
+-- fires from this codebase. It is here for the same reason as D47's fixture
+-- registry and 007's keywords validation -- a constraint that the only writer
+-- respects is not a constraint, it is a comment. Someone reaches into Workbench
+-- one evening, inserts a counter row by hand, and the CHECK is what stops the
+-- month from having two sequences forever after.
+--
+-- MySQL 8.0.16+ enforces CHECK constraints rather than parsing and ignoring
+-- them, which older 8.0 releases did. This server is 8.0.34, so the constraint
+-- is live. On a pre-8.0.16 server the table would be created silently without
+-- it -- another reason the live verification in Task 2.4 inserts a bad key and
+-- expects to be refused, rather than trusting the DDL to have done something.
+--
+-- last_seq is UNSIGNED because the sequence counts upward from zero and can
+-- never legitimately be negative, and because UNSIGNED INT tops out at
+-- 4,294,967,295 -- about 4.2 million letters in a single month, which is more
+-- than the ministry will file in the lifetime of this system. INT SIGNED would
+-- cap at 2.1 billion, also sufficient, but UNSIGNED states the direction of
+-- travel in the schema instead of leaving it to be inferred.
+--
+-- DEFAULT 0 is what makes the INSERT ... ON DUPLICATE KEY idiom in
+-- dayStampGenerator work: the row for a brand new month is created already at
+-- zero, and the same statement that creates it is the statement that leaves an
+-- existing row untouched. The first stamp of a month is therefore 0001, read
+-- from a row that did not exist a moment earlier.
+--
+-- There is deliberately NO created_at or updated_at on this table. It is not
+-- business data that anything reads, and a counter that is written on every
+-- single letter would churn its timestamp for no benefit. The one fact worth
+-- keeping -- which month has been filed -- is the primary key itself.
+--
+-- This table is never exposed by any endpoint and never seeded. Its contents
+-- are an implementation detail of the stamp sequence: a developer who truncates
+-- it during development gets a fresh month of 0001s, and nothing else in the
+-- system can tell the difference, because no letter exists yet in that month.
+-- Once letters DO exist, the counter is load-bearing and this table joins
+-- mail_records, official_minutes, and audit_logs as data that must not be
+-- wiped casually. It is a small table by design: one row per month filed, so a
+-- decade of use is 120 rows.

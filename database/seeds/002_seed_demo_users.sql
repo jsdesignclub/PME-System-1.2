@@ -1,4 +1,5 @@
--- Seed 002: the eight demo personas, one per role ENUM value.
+-- Seed 002: the eight demo personas, one per role ENUM value, plus a second
+-- intake counter (see the Registry Clerk note below).
 --
 -- ============================ READ THIS FIRST ============================
 -- Every account below signs in with the password:  PmeDemo@2026
@@ -49,10 +50,10 @@ INSERT INTO users (nic_no, full_name, email, password_hash, role, department_id,
    'SECRETARY',         (SELECT id FROM departments WHERE code = 'SEC'),
    'Provincial Secretary', NULL),
 
-  ('881234562V', 'Assistant Officer',     'ao@pme.local',
+  ('881234562V', 'Administrative Officer', 'ao@pme.local',
    '$2b$12$3SzEDVG57oJJl6pMMmvYx.peIk33U.1Jsiyv7QT8bTxkFXg9EVVeO',
    'AO',                (SELECT id FROM departments WHERE code = 'SEC'),
-   'Assistant Officer', NULL),
+   'Administrative Officer', NULL),
 
   ('881234563V', 'Chief Clerk',           'chiefclerk@pme.local',
    '$2b$12$3SzEDVG57oJJl6pMMmvYx.peIk33U.1Jsiyv7QT8bTxkFXg9EVVeO',
@@ -77,7 +78,21 @@ INSERT INTO users (nic_no, full_name, email, password_hash, role, department_id,
   ('881234567V', 'Transport Officer',     'transport@pme.local',
    '$2b$12$3SzEDVG57oJJl6pMMmvYx.peIk33U.1Jsiyv7QT8bTxkFXg9EVVeO',
    'TRANSPORT_OFFICER', (SELECT id FROM departments WHERE code = 'TRANSPORT'),
-   'Transport Officer', 'Fleet Unit')
+   'Transport Officer', 'Fleet Unit'),
+
+  -- A SECOND intake counter, in the Education department rather than the
+  -- Secretary's. Not a ninth role: MINOR_STAFF again, the same permissions, a
+  -- different desk. It exists because of a scope rule that would otherwise make
+  -- the demo misleading. `GET /mail` scopes a SUBJECT_CLERK to letters whose
+  -- CREATOR is in the clerk's own department (models/mailModel.js mailScope), so
+  -- with only the Secretary's intake counter there, the Education Subject Clerk
+  -- would log in to an empty registry and be unable to route a single letter —
+  -- the one handoff the demo exists to show. A ministry has more than one
+  -- registry counter; this is the second one.
+  ('881234568V', 'Registry Clerk',        'registry@pme.local',
+   '$2b$12$3SzEDVG57oJJl6pMMmvYx.peIk33U.1Jsiyv7QT8bTxkFXg9EVVeO',
+   'MINOR_STAFF',       (SELECT id FROM departments WHERE code = 'EDU'),
+   'Registry Clerk', 'Education Registry')
 ON DUPLICATE KEY UPDATE
   full_name     = VALUES(full_name),
   email         = VALUES(email),

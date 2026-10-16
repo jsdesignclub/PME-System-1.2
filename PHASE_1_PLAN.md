@@ -1,8 +1,23 @@
 # Phase 1 — Authentication, RBAC & User Directory: Detailed Plan
 
 **Parent plan:** `EXECUTION_PLAN.md` (Phase 1 of 9) · **Predecessor:** `PHASE_0_PLAN.md`
-**Status:** 📋 Planned — not started
+**Status:** ✅ Complete — all twelve §9 acceptance checks pass; superseded by Phase 2
 **Date:** 2026-09-29 (written)
+
+> **Read alongside Phase 2.** This phase is finished. Two things in it changed
+> once Phase 2 landed, so a reader re-running these instructions should know:
+>
+> - **§9 check 1 now reads `9 applied, 0 pending`, not `4 applied`.** Migrations
+>   `005`–`009` were added by Phase 2. The number differing is expected, not a
+>   fault.
+> - **§9 check 4 ("no `mail_records` table") is now false by design.** Phase 2
+>   built it. Re-running this phase's sweep after Phase 2 will not reproduce it.
+>
+> The decisions below (D1–D47) remain binding. None was re-litigated in Phase 2,
+> though D23 (never hard-delete a user), D25 (`permissions.js` as the single
+> source of truth), D28 (`TRANSPORT_OFFICER` gets the officer permission set) and
+> D29 (identical 401 bodies, `404` over `403` for invisible rows) are all load-
+> bearing there.
 
 ---
 
@@ -643,7 +658,7 @@ Written as `INSERT INTO departments (name, code) VALUES (...) ON DUPLICATE KEY U
 | :-- | :-- | :-- | :-- |
 | `ADMIN` | `881234560V` | System Administrator | `ADMIN` |
 | `SECRETARY` | `881234561V` | Provincial Secretary | `SEC` |
-| `AO` | `881234562V` | Assistant Officer | `SEC` |
+| `AO` | `881234562V` | Administrative Officer | `SEC` |
 | `CHIEF_CLERK` | `881234563V` | Chief Clerk | `ADMIN` |
 | `SUBJECT_CLERK` | `881234564V` | Subject Clerk | `EDU` |
 | `OFFICER` | `881234565V` | District Officer | `EDU` |
@@ -863,7 +878,7 @@ Everything in `PHASE_0_PLAN.md` §10 still applies. Phase 1 adds:
 | **Q12** | *(new)* Should the audit `BEFORE UPDATE`/`BEFORE DELETE` trigger be added, accepting a `TRIGGER` grant for `pme_user` in `database/bootstrap.sql`? | Nothing in Phase 1 | **DEFERRED to Phase 4 task 4.6.** Phase 1 enforces immutability in the API layer only (D42). Say the word and it moves into this phase |
 | **Q13** | *(new)* Should `users.updated_at` (D37) be added, deviating from spec §5.1's literal DDL? | Nothing | **DEFAULT: added.** One column; the alternative is that `PATCH /users/:id` cannot report when the row last changed |
 | **Q14** | *(new)* Should `GET /api/v1/departments` be open to every authenticated user, or admin-only? | Task 1.14 | **DEFAULT: open.** Every signed-in user needs the department picker; the data is a name and a code, not sensitive. Change to admin-only if the ministry disagrees |
-| **Q15** | *(inherited from `PHASE_0_PLAN.md` §3a)* Node v22.3.0 is below Vite 8's floor. Upgrade the machine install, or accept the warning? | Nothing in Phase 1 | **STILL OPEN.** Phase 1 runs no Vite build, so this does not block it. It must be resolved before Phase 3. The interim workaround (portable v22.22.3) is verified |
+| **Q15** | *(inherited from `PHASE_0_PLAN.md` §3a)* Node v22.3.0 is below Vite 8's floor. Upgrade the machine install, or accept the warning? | Nothing in Phase 1 | **RESOLVED 2026-09-30 — accept the warning.** Vite 8.3.1 treats the engine mismatch as a warning, not a refusal: `npm --prefix frontend run build` exits 0 on `v22.3.0` and emits `dist/`. Verified by running it. The portable v22.22.3 workaround is therefore no longer needed, and Phase 3 is not blocked |
 | **Q16** | *(inherited)* `EXECUTION_PLAN.md` still describes `docker-compose.yml` in four places, which Q1 overturned | Documentation | **OPEN.** Not rewritten, for the reason given in `PHASE_0_PLAN.md` §12. Task 1.17 touches the README, not the parent plan |
 
 ## 14. Execution Sequence
