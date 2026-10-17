@@ -28,10 +28,8 @@ import { useLanguage } from '../context/LanguageContext.jsx';
  * The seeded accounts still exist and still work. They are documented in
  * README.md, which is where a demo operator needs them and which is not served to
  * the public. That is the right place for a published credential: in the
- * operator's own notes, not painted on the door.
- *
- * What replaced the cards is a single quiet line telling the operator where to
- * look, so nobody demoing this has to go hunting.
+ * operator's own notes, not painted on the door. This page now shows no hint at
+ * all, so a sign-in screen left open reveals nothing about how to sign in.
  */
 export default function LoginPage() {
   const { t } = useLanguage();
@@ -192,21 +190,6 @@ export default function LoginPage() {
               {busy ? t('login.signingIn') : t('auth.signIn')}
             </button>
           </form>
-
-          {/*
-            The demo hint, reduced to a single line with no credentials on it.
-            See the note at the top of the file for why the accounts and their
-            password are documented in README.md instead.
-          */}
-          <p className="mt-8 border-t border-white/10 pt-6 text-center text-xs leading-relaxed text-slate-500">
-            Demo operator: the seeded accounts and their shared password are listed in
-            {' '}
-            <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-slate-400">
-              README.md
-            </code>
-            {' '}
-            under “Demo credentials”.
-          </p>
         </div>
       </div>
     </div>
