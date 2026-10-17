@@ -53,9 +53,9 @@ export const en = Object.freeze({
 
   // --- Authentication ------------------------------------------------------
   'auth.signIn': 'Sign in',
-  'auth.tagline': 'Enter your NIC number and password to continue.',
-  'auth.nic': 'NIC number',
-  'auth.nicPlaceholder': '881234564V',
+  'auth.tagline': 'Enter your email address and password to continue.',
+  'auth.nic': 'email address',
+  'auth.nicPlaceholder': 'your-email@gmail.com',
   'auth.password': 'Password',
   'auth.signingIn': 'Signing in…',
   'auth.failed': 'Sign-in failed.',

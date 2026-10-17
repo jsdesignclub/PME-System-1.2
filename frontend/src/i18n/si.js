@@ -34,9 +34,9 @@
  */
 export const si = Object.freeze({
   // --- Application identity ------------------------------------------------
-  'app.ministry': 'ක්‍රීඩා අමාත්‍යාංශය, උව පළාත',
-  'app.title': 'අමාත්‍යංශ කළමණාකරන පදිධතිය',
-  'app.titleDocument': 'EMS — ක්‍රීඩා අමාත්‍යාංශය, උව පළාත',
+  'app.ministry': 'ක්‍රීඩා අමාත්‍යාංශය, උව පළාත සභාව',
+  'app.title': 'අමාත්‍යංශ කළමණාකරන පද්ධතිය',
+  'app.titleDocument': 'EMS — ක්‍රීඩා අමාත්‍යාංශය, උව පළාත සභාව',
   'app.emblem': 'අමාත්‍යාංශ ලාංචනය',
 
   // --- Language ------------------------------------------------------------
@@ -55,7 +55,7 @@ export const si = Object.freeze({
   'nav.modules': 'කොටස්',
   'nav.menu': 'කොටස්',
   'nav.collapse': 'කුඩා කරන්න',
-  'nav.expand': 'විස්පර කරන්න',
+  'nav.expand': 'විස්තර කරන්න',
   'nav.comingLater': 'පසුව එයි',
   'nav.phase': 'අදියර',
   'nav.signOut': 'ඉවත් වන්න',
@@ -66,7 +66,7 @@ export const si = Object.freeze({
 
   // --- Authentication ------------------------------------------------------
   'auth.signIn': 'පිවිසෙන්න',
-  'auth.tagline': 'ඔබගේ ජාතික හඳුනා අංකය සහ මුරපදය ඇතුළත් කරමින් ඉදිරියට යන්න.',
+  'auth.tagline': 'ඔබගේ ඉමේල් ලිපිනය සහ මුරපදය ඇතුළත් කරමින් ඉදිරියට යන්න.',
   'auth.nic': 'ජාතික හඳුනා අංකය',
   'auth.nicPlaceholder': '881234564V',
   'auth.password': 'මුරපදය',
