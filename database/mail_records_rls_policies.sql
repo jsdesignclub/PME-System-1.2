@@ -50,6 +50,20 @@ CREATE POLICY mail_read ON public.mail_records FOR SELECT TO authenticated USING
           OR (mail_records.department_id IS NULL AND mail_records.created_by_user_id = p.id)
           OR mail_records.assigned_officer_id = p.id
         ))
+        -- DEPARTMENT_HEAD: their department's letters, plus any letter with a
+        -- Pending Approval completion document addressed to them.
+        OR (p.role = 'DEPARTMENT_HEAD' AND (
+          mail_records.department_id = p.department_id
+          OR (
+            mail_records.status::text = 'Pending Approval'
+            AND EXISTS (
+              SELECT 1 FROM public.completion_submissions cs
+              WHERE cs.mail_record_id = mail_records.id
+                AND cs.status = 'Pending'
+                AND cs.approver_role = 'DEPARTMENT_HEAD'
+            )
+          )
+        ))
         -- OFFICER / TRANSPORT_OFFICER: only what is assigned to them
         OR (p.role IN ('OFFICER','TRANSPORT_OFFICER') AND mail_records.assigned_officer_id = p.id)
         -- MINOR_STAFF: letters they created

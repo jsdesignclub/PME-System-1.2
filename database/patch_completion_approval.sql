@@ -7,9 +7,9 @@
 -- -----------------
 -- Completing a letter is no longer the officer's act alone. When the work is
 -- finished the assigned officer forwards a "completion document" (a scan, a
--- report, a signed minute) to the Administrative Officer OR the Secretary. The
--- letter moves to a new resting state, 'Pending Approval', and only the chosen
--- approver's decision finishes it:
+-- report, a signed minute) to the Administrative Officer, the Secretary, or the
+-- Department Head. The letter moves to a new resting state, 'Pending Approval',
+-- and only the chosen approver's decision finishes it:
 --
 --     In Progress  --submit_completion-->  Pending Approval
 --     Pending Approval  --decide_completion(Approved)-->  Completed
@@ -139,6 +139,11 @@ BEGIN
     v_perms := ARRAY['WRITE_MINUTES'];
   ELSIF v_profile.role = 'SUBJECT_CLERK' THEN
     v_perms := ARRAY['CREATE_MAIL','READ_DEPARTMENT_MAIL','WRITE_MINUTES','FORWARD_MAIL','ASSIGN_OFFICER','UPDATE_DUTY_CHART'];
+  ELSIF v_profile.role = 'DEPARTMENT_HEAD' THEN
+    -- A department head sees their own department's letters and can approve
+    -- completion documents addressed to them, but does not log, forward or
+    -- assign — those are clerk duties.
+    v_perms := ARRAY['READ_DEPARTMENT_MAIL','READ_ASSIGNED_MAIL','WRITE_MINUTES','UPDATE_ACTION_STATUS','UPDATE_DUTY_CHART'];
   ELSIF v_profile.role IN ('OFFICER','TRANSPORT_OFFICER') THEN
     v_perms := ARRAY['READ_ASSIGNED_MAIL','UPDATE_ACTION_STATUS','UPDATE_DUTY_CHART'];
   END IF;
@@ -173,7 +178,7 @@ BEGIN
     IF v_profile.role IN ('ADMIN','CHIEF_CLERK') THEN
       v_perms := array_append(v_perms, 'approve_completion');
       v_perms := array_append(v_perms, 'reject_completion');
-    ELSIF v_profile.role IN ('AO','SECRETARY') THEN
+    ELSIF v_profile.role IN ('AO','SECRETARY','DEPARTMENT_HEAD') THEN
       IF EXISTS (
         SELECT 1 FROM public.completion_submissions cs
         WHERE cs.mail_record_id = p_mail_id
@@ -227,6 +232,17 @@ CREATE POLICY mail_read ON public.mail_records FOR SELECT TO authenticated USING
           OR mail_records.department_id = p.department_id
           OR mail_records.assigned_officer_id = p.id
         ))
+        -- DEPARTMENT_HEAD: their department's letters, plus any letter with a
+        -- Pending Approval completion document addressed to them.
+        OR (p.role = 'DEPARTMENT_HEAD' AND (
+          mail_records.department_id = p.department_id
+          OR (mail_records.status::text = 'Pending Approval' AND EXISTS (
+            SELECT 1 FROM public.completion_submissions cs
+            WHERE cs.mail_record_id = mail_records.id
+              AND cs.status = 'Pending'
+              AND cs.approver_role = 'DEPARTMENT_HEAD'
+          ))
+        ))
         OR (p.role IN ('OFFICER','TRANSPORT_OFFICER') AND mail_records.assigned_officer_id = p.id)
       )
       AND NOT (p.role IN ('SUBJECT_CLERK','OFFICER','TRANSPORT_OFFICER') AND mail_records.priority = 'Confidential')
@@ -256,8 +272,8 @@ DECLARE
   v_record  public.mail_records;
   v_sub     public.completion_submissions;
 BEGIN
-  IF p_approver_role NOT IN ('AO','SECRETARY') THEN
-    RAISE EXCEPTION 'Choose an approver: AO or Secretary.' USING ERRCODE = '22023';
+  IF p_approver_role NOT IN ('AO','SECRETARY','DEPARTMENT_HEAD') THEN
+    RAISE EXCEPTION 'Choose an approver: AO, Secretary or Department Head.' USING ERRCODE = '22023';
   END IF;
 
   SELECT * INTO v_profile FROM public.profiles WHERE id = auth.uid();
@@ -268,6 +284,20 @@ BEGIN
   SELECT * INTO v_record FROM public.mail_records WHERE id = p_mail_id;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Letter not found.' USING ERRCODE = 'P0002';
+  END IF;
+
+  -- A department head is an approver only for their OWN department. The officer
+  -- must not be able to name DEPARTMENT_HEAD when the letter's department has no
+  -- active head, which would leave the submission with nobody able to decide it.
+  IF p_approver_role = 'DEPARTMENT_HEAD' THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM public.profiles ph
+      WHERE ph.department_id = v_record.department_id
+        AND ph.role = 'DEPARTMENT_HEAD'
+        AND ph.is_active = true
+    ) THEN
+      RAISE EXCEPTION 'No active Department Head for this letter''s department.' USING ERRCODE = '42501';
+    END IF;
   END IF;
 
   IF v_record.assigned_officer_id IS DISTINCT FROM auth.uid() THEN
@@ -334,6 +364,17 @@ BEGIN
 
   IF NOT (v_profile.role IN ('ADMIN','CHIEF_CLERK') OR v_profile.role::text = v_sub.approver_role) THEN
     RAISE EXCEPTION 'You are not the approver for this submission.' USING ERRCODE = '42501';
+  END IF;
+
+  -- A DEPARTMENT_HEAD approver is scoped to their OWN department's letters. The
+  -- submission addresses a ROLE, so without this a head of one department could
+  -- decide a completion belonging to another department.
+  IF v_sub.approver_role = 'DEPARTMENT_HEAD' THEN
+    SELECT * INTO v_record FROM public.mail_records WHERE id = v_sub.mail_record_id;
+    IF v_profile.role::text = 'DEPARTMENT_HEAD'
+       AND v_profile.department_id IS DISTINCT FROM v_record.department_id THEN
+      RAISE EXCEPTION 'You are not the Department Head for this letter.' USING ERRCODE = '42501';
+    END IF;
   END IF;
 
   UPDATE public.completion_submissions

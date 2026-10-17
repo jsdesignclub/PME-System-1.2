@@ -64,10 +64,12 @@ export default function DashboardPage() {
   // unreachable for EVERY user including the administrator, and nobody saw an
   // error: the personal queue is a perfectly plausible page to be on.
   const canReadAllMail = permissions.includes('READ_ALL_MAIL');
-  // Subject clerks get the figures dashboard too. The SERVER decides the scope:
-  // `mail_stats_rows()` returns ministry figures for an executive and central
-  // clerk, and the clerk's own branch for an ordinary one.
-  const canViewStats = canReadAllMail || user?.role === 'SUBJECT_CLERK';
+  // Subject clerks and department heads get the figures dashboard too. The SERVER
+  // decides the scope: `mail_stats_rows()` returns ministry figures for an
+  // executive and central clerk, and the clerk's or department head's own branch
+  // for anyone else.
+  const canViewStats =
+    canReadAllMail || user?.role === 'SUBJECT_CLERK' || user?.role === 'DEPARTMENT_HEAD';
 
   return canViewStats ? (
     <StatsDashboard user={user} permissions={permissions} />

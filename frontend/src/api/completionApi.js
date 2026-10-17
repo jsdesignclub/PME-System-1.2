@@ -4,11 +4,12 @@ import { supabase } from './supabaseClient.js';
  * The completion-document approval workflow.
  *
  * A letter is no longer completed by its officer directly. The officer forwards
- * a "completion document" to the AO or the Secretary; the letter moves to
- * 'Pending Approval', and only that approver's decision finishes it. Both
- * transitions are single SECURITY DEFINER RPCs — `submit_completion` and
- * `decide_completion` — because each is really two writes (the submission and
- * the letter) that must commit together. See patch_completion_approval.sql.
+ * a "completion document" to the AO, the Secretary or their own Department Head;
+ * the letter moves to 'Pending Approval', and only that approver's decision
+ * finishes it. Both transitions are single SECURITY DEFINER RPCs —
+ * `submit_completion` and `decide_completion` — because each is really two
+ * writes (the submission and the letter) that must commit together. See
+ * patch_completion_approval.sql.
  *
  * The file bytes live in the same private `mail-attachments` bucket as ordinary
  * scans, under the letter's own folder, so the existing storage policies apply

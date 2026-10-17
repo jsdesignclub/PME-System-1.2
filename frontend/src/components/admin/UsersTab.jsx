@@ -50,7 +50,7 @@ import { formatDateTime } from '../../utils/dateUtils.js';
  *
  * Kept as a local constant rather than fetched, because there is no endpoint that
  * serves the ENUM and inventing one would be a new API surface for a list of
- * eight strings that changes when a migration changes.
+ * role names that changes when a migration changes.
  */
 const ROLES = [
   'MINOR_STAFF',
@@ -58,6 +58,7 @@ const ROLES = [
   'AO',
   'CHIEF_CLERK',
   'SUBJECT_CLERK',
+  'DEPARTMENT_HEAD',
   'OFFICER',
   'TRANSPORT_OFFICER',
   'ADMIN',

@@ -128,6 +128,7 @@ export const en = Object.freeze({
   'role.AO': 'Administrative Officer',
   'role.CHIEF_CLERK': 'Chief Clerk',
   'role.SUBJECT_CLERK': 'Subject Clerk',
+  'role.DEPARTMENT_HEAD': 'Department Head',
   'role.OFFICER': 'Officer',
   'role.TRANSPORT_OFFICER': 'Transport Officer',
   'role.ADMIN': 'Administrator',
@@ -630,12 +631,14 @@ export const en = Object.freeze({
 
   'completion.submitTitle': 'Forward completion document',
   'completion.submitHelp':
-    'Attach the document that completes this letter and send it to the AO or ' +
-    'the Secretary. The letter is only marked completed once they approve it.',
+    'Attach the document that completes this letter and send it to the AO, the ' +
+    'Secretary, or the Department Head. The letter is only marked completed once ' +
+    'they approve it.',
   'completion.approverLabel': 'Send to',
   'completion.chooseApprover': 'Choose an approver',
   'completion.approverAO': 'Administrative Officer',
   'completion.approverSecretary': 'Secretary',
+  'completion.approverDepartmentHead': 'Department Head',
   'completion.noteLabel': 'Note (optional)',
   'completion.notePlaceholder': 'What does this document show?',
   'completion.documentLabel': 'Completion document',

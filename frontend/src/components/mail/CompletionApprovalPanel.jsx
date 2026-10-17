@@ -17,11 +17,12 @@
  * appears in the letter's timeline alongside the workflow transitions. This panel
  * only renders the submission history the same server hands back.
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Paperclip, Upload, X } from 'lucide-react';
 
 import * as completionApi from '../../api/completionApi.js';
+import * as userApi from '../../api/userApi.js';
 import { useApiError } from '../../hooks/useApiError.js';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { formatBytes, formatDateTime } from '../../utils/dateUtils.js';
@@ -52,7 +53,29 @@ export function CompletionApprovalPanel({ letter, actions = [], submissions = []
   const [decisionNote, setDecisionNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [downloading, setDownloading] = useState(null);
+  const [departmentHead, setDepartmentHead] = useState(null);
   const fileInputRef = useRef(null);
+
+  // Load the department head for this letter's department, so the officer can
+  // choose them as an approver alongside the AO and the Secretary.
+  useEffect(() => {
+    if (!letter?.department_id) {
+      setDepartmentHead(null);
+      return undefined;
+    }
+    let live = true;
+    userApi
+      .list({ role: 'DEPARTMENT_HEAD', department_id: letter.department_id, is_active: true }, { limit: 1 })
+      .then(({ rows }) => {
+        if (live) setDepartmentHead(rows[0] ?? null);
+      })
+      .catch(() => {
+        if (live) setDepartmentHead(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, [letter?.department_id]);
 
   const submitApi = useApiError(t('completion.submitFailed'));
   const decideApi = useApiError(t('completion.decideFailed'));
@@ -140,6 +163,11 @@ export function CompletionApprovalPanel({ letter, actions = [], submissions = []
               <option value="">{t('completion.chooseApprover')}</option>
               <option value="AO">{t('completion.approverAO')}</option>
               <option value="SECRETARY">{t('completion.approverSecretary')}</option>
+              {departmentHead && (
+                <option value="DEPARTMENT_HEAD">
+                  {t('completion.approverDepartmentHead')} ({departmentHead.full_name})
+                </option>
+              )}
             </select>
           </label>
 

@@ -141,6 +141,7 @@ export const si = Object.freeze({
   'role.AO': 'පරිපාලන නිළධාරී',
   'role.CHIEF_CLERK': 'ප්‍රධාන ලේඛකයා',
   'role.SUBJECT_CLERK': 'විෂය ලේඛකයා',
+  'role.DEPARTMENT_HEAD': 'දෙපාර්තමේන්තු ප්‍රධානි',
   'role.OFFICER': 'නිලධාරී',
   'role.TRANSPORT_OFFICER': 'ප්‍රවාහන නිලධාරී',
   'role.ADMIN': 'පරිපාලකයා',
@@ -631,12 +632,13 @@ export const si = Object.freeze({
 
   'completion.submitTitle': 'සම්පූර්ණ කිරීමේ ලේඛනය යොමු කරන්න',
   'completion.submitHelp':
-    'මෙම ලිපිය සම්පූර්ණ කරන ලේඛනය අමුණා පරිපාලන නිලධාරී හෝ ලේකම් වෙත යවන්න. ' +
+    'මෙම ලිපිය සම්පූර්ණ කරන ලේඛනය අමුණා පරිපාලන නිලධාරී, ලේකම්, හෝ දෙපාර්තමේන්තු ප්‍රධානි වෙත යවන්න. ' +
     'ඔවුන් අනුමත කළ පසුව පමණක් ලිපිය සම්පූර්ණ ලෙස සලකුණු වේ.',
   'completion.approverLabel': 'යවන්නේ',
   'completion.chooseApprover': 'අනුමත කරන්නෙකු තෝරන්න',
   'completion.approverAO': 'පරිපාලන නිලධාරී',
   'completion.approverSecretary': 'ලේකම්',
+  'completion.approverDepartmentHead': 'දෙපාර්තමේන්තු ප්‍රධානි',
   'completion.noteLabel': 'සටහන (විකල්ප)',
   'completion.notePlaceholder': 'මෙම ලේඛනයෙන් පෙන්නුම් කරන්නේ කුමක්ද?',
   'completion.documentLabel': 'සම්පූර්ණ කිරීමේ ලේඛනය',

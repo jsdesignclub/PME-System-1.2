@@ -9,7 +9,7 @@
 -- ============================================================================
 
 -- ENUM types
-CREATE TYPE user_role AS ENUM ('ADMIN','SECRETARY','AO','CHIEF_CLERK','SUBJECT_CLERK','OFFICER','MINOR_STAFF','TRANSPORT_OFFICER');
+CREATE TYPE user_role AS ENUM ('ADMIN','SECRETARY','AO','CHIEF_CLERK','SUBJECT_CLERK','OFFICER','MINOR_STAFF','TRANSPORT_OFFICER','DEPARTMENT_HEAD');
 CREATE TYPE sender_type AS ENUM ('Government Office','Non-Government / Public','Private Organization','Judicial / Court');
 CREATE TYPE mail_priority AS ENUM ('Normal','Urgent','Confidential');
 CREATE TYPE mail_status AS ENUM ('Logged','Forwarded to AO','Forwarded to Subject','Assigned','In Progress','Pending Approval','Completed');
@@ -323,6 +323,11 @@ BEGIN
     v_perms := ARRAY['WRITE_MINUTES'];
   ELSIF v_profile.role = 'SUBJECT_CLERK' THEN
     v_perms := ARRAY['CREATE_MAIL','READ_DEPARTMENT_MAIL','WRITE_MINUTES','FORWARD_MAIL','ASSIGN_OFFICER','UPDATE_DUTY_CHART'];
+  ELSIF v_profile.role = 'DEPARTMENT_HEAD' THEN
+    -- A department head sees their own department's letters and can approve
+    -- completion documents addressed to them, but does not log, forward or
+    -- assign — those are clerk duties.
+    v_perms := ARRAY['READ_DEPARTMENT_MAIL','READ_ASSIGNED_MAIL','WRITE_MINUTES','UPDATE_ACTION_STATUS','UPDATE_DUTY_CHART'];
   ELSIF v_profile.role IN ('OFFICER','TRANSPORT_OFFICER') THEN
     v_perms := ARRAY['READ_ASSIGNED_MAIL','UPDATE_ACTION_STATUS','UPDATE_DUTY_CHART'];
   END IF;
@@ -367,7 +372,7 @@ BEGIN
     IF v_profile.role IN ('ADMIN','CHIEF_CLERK') THEN
       v_perms := array_append(v_perms, 'approve_completion');
       v_perms := array_append(v_perms, 'reject_completion');
-    ELSIF v_profile.role IN ('AO','SECRETARY') THEN
+    ELSIF v_profile.role IN ('AO','SECRETARY','DEPARTMENT_HEAD') THEN
       IF EXISTS (
         SELECT 1 FROM public.completion_submissions cs
         WHERE cs.mail_record_id = p_mail_id
@@ -422,11 +427,11 @@ BEGIN
    WHERE p.id = auth.uid();
 
   IF v_profile.role IS NULL
-     OR v_profile.role::text NOT IN ('ADMIN','SECRETARY','CHIEF_CLERK','AO','SUBJECT_CLERK') THEN
+     OR v_profile.role::text NOT IN ('ADMIN','SECRETARY','CHIEF_CLERK','AO','SUBJECT_CLERK','DEPARTMENT_HEAD') THEN
     RAISE EXCEPTION 'Not authorized to read mail statistics' USING ERRCODE = '42501';
   END IF;
 
-  IF v_profile.role::text = 'SUBJECT_CLERK' AND NOT v_profile.is_central_clerk THEN
+  IF (v_profile.role::text = 'SUBJECT_CLERK' OR v_profile.role::text = 'DEPARTMENT_HEAD') AND NOT v_profile.is_central_clerk THEN
     -- A branch clerk sees their branch and nothing else. A clerk with no
     -- department sees an empty dashboard rather than every branch's figures.
     RETURN QUERY
@@ -468,8 +473,8 @@ DECLARE
   v_record  public.mail_records;
   v_sub     public.completion_submissions;
 BEGIN
-  IF p_approver_role NOT IN ('AO','SECRETARY') THEN
-    RAISE EXCEPTION 'Choose an approver: AO or Secretary.' USING ERRCODE = '22023';
+  IF p_approver_role NOT IN ('AO','SECRETARY','DEPARTMENT_HEAD') THEN
+    RAISE EXCEPTION 'Choose an approver: AO, Secretary or Department Head.' USING ERRCODE = '22023';
   END IF;
 
   SELECT * INTO v_profile FROM public.profiles WHERE id = auth.uid();
@@ -480,6 +485,20 @@ BEGIN
   SELECT * INTO v_record FROM public.mail_records WHERE id = p_mail_id;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Letter not found.' USING ERRCODE = 'P0002';
+  END IF;
+
+  -- A department head is an approver only for their OWN department. Refuse
+  -- DEPARTMENT_HEAD when the letter's department has no active head, which would
+  -- leave the submission with nobody able to decide it.
+  IF p_approver_role = 'DEPARTMENT_HEAD' THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM public.profiles ph
+      WHERE ph.department_id = v_record.department_id
+        AND ph.role = 'DEPARTMENT_HEAD'
+        AND ph.is_active = true
+    ) THEN
+      RAISE EXCEPTION 'No active Department Head for this letter''s department.' USING ERRCODE = '42501';
+    END IF;
   END IF;
 
   IF v_record.assigned_officer_id IS DISTINCT FROM auth.uid() THEN
@@ -545,6 +564,17 @@ BEGIN
 
   IF NOT (v_profile.role IN ('ADMIN','CHIEF_CLERK') OR v_profile.role::text = v_sub.approver_role) THEN
     RAISE EXCEPTION 'You are not the approver for this submission.' USING ERRCODE = '42501';
+  END IF;
+
+  -- A DEPARTMENT_HEAD approver is scoped to their OWN department's letters. The
+  -- submission addresses a ROLE, so without this a head of one department could
+  -- decide a completion belonging to another department.
+  IF v_sub.approver_role = 'DEPARTMENT_HEAD' THEN
+    SELECT * INTO v_record FROM public.mail_records WHERE id = v_sub.mail_record_id;
+    IF v_profile.role::text = 'DEPARTMENT_HEAD'
+       AND v_profile.department_id IS DISTINCT FROM v_record.department_id THEN
+      RAISE EXCEPTION 'You are not the Department Head for this letter.' USING ERRCODE = '42501';
+    END IF;
   END IF;
 
   UPDATE public.completion_submissions
@@ -821,6 +851,17 @@ CREATE POLICY mail_read ON public.mail_records FOR SELECT TO authenticated USING
           OR mail_records.created_by_user_id = p.id
           OR mail_records.department_id = p.department_id
           OR mail_records.assigned_officer_id = p.id
+        ))
+        -- DEPARTMENT_HEAD: their department's letters, plus any letter with a
+        -- Pending Approval completion document addressed to them.
+        OR (p.role = 'DEPARTMENT_HEAD' AND (
+          mail_records.department_id = p.department_id
+          OR (mail_records.status::text = 'Pending Approval' AND EXISTS (
+            SELECT 1 FROM public.completion_submissions cs
+            WHERE cs.mail_record_id = mail_records.id
+              AND cs.status = 'Pending'
+              AND cs.approver_role = 'DEPARTMENT_HEAD'
+          ))
         ))
         -- OFFICER/TRANSPORT_OFFICER: assigned to them only
         OR (p.role IN ('OFFICER','TRANSPORT_OFFICER') AND mail_records.assigned_officer_id = p.id)
