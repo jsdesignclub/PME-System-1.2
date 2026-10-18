@@ -138,7 +138,7 @@ BEGIN
   ELSIF v_profile.role = 'AO' THEN
     v_perms := ARRAY['WRITE_MINUTES'];
   ELSIF v_profile.role = 'SUBJECT_CLERK' THEN
-    v_perms := ARRAY['CREATE_MAIL','READ_DEPARTMENT_MAIL','WRITE_MINUTES','FORWARD_MAIL','ASSIGN_OFFICER','UPDATE_DUTY_CHART'];
+    v_perms := ARRAY['CREATE_MAIL','READ_DEPARTMENT_MAIL','WRITE_MINUTES','FORWARD_MAIL','ASSIGN_OFFICER','UPDATE_DUTY_CHART','UPDATE_ACTION_STATUS'];
   ELSIF v_profile.role = 'DEPARTMENT_HEAD' THEN
     -- A department head sees their own department's letters and can approve
     -- completion documents addressed to them, but does not log, forward or

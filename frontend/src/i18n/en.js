@@ -551,6 +551,12 @@ export const en = Object.freeze({
   'assign.failed': 'The letter was not assigned.',
   'assign.assigned': 'Assigned to {name}.',
   'assign.routedToClerk': 'Routed to branch clerk {name}.',
+  'assign.clerkAsExecutor':
+    'Assign this clerk as the executor — they will work the letter themselves instead of passing it on.',
+  'assign.toSelf': 'Assign this letter to myself',
+  'assign.toSelfHint':
+    'Take the letter as the executor: you start it, add the progress note and submit the completion report yourself.',
+  'assign.selfAssigned': 'The letter is now assigned to you.',
 
   'nextStep.title': 'Next step',
   'nextStep.closed': 'This letter is closed. The file is complete.',

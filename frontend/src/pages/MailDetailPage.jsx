@@ -290,6 +290,21 @@ export default function MailDetailPage() {
             />
           )}
 
+          {/* A subject clerk may take the letter as the EXECUTOR instead of
+              routing it on: one press assigns it to themselves, and the normal
+              officer path (start -> progress note -> submit completion) opens
+              because they hold UPDATE_ACTION_STATUS.
+
+              Deliberately NOT guarded by "assigned_officer_id !== me": a branch
+              clerk who received the letter through routeToClerk() already has
+              their id in that column (it is the routing pointer), and that is
+              exactly the clerk who needs this button. Once they press it the
+              status leaves 'Forwarded to Subject', `assign` disappears from the
+              action list and canAssign hides the card on its own. */}
+          {canAssign && user?.role === 'SUBJECT_CLERK' && (
+            <SelfAssignCard mail={mail} user={user} onChanged={load} notify={notify} />
+          )}
+
           <DutyMatcherPanel letterId={mail.id} selected={assigning} onSelect={setAssigning} canAssign={canAssign} />
 
           {actions.some((a) => a.action === 'start') && (
@@ -355,6 +370,8 @@ function AssignPanel({ mail, selected, onSelect, onChanged, notify, user, permis
   const [targets, setTargets] = useState([]);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  // Ticked only when the clerk should WORK the letter instead of passing it on.
+  const [executorMode, setExecutorMode] = useState(false);
   const { failure, run, clear } = useApiError(t('assign.failed'));
 
   useEffect(() => {
@@ -383,22 +400,36 @@ function AssignPanel({ mail, selected, onSelect, onChanged, notify, user, permis
 
   const officerTargets = targets.filter((person) => person.role !== 'SUBJECT_CLERK');
   // Only BRANCH clerks are routing targets: a central clerk already sees every
-  // letter, and a clerk never routes to themselves.
+  // letter, and a clerk never routes to themselves. Every clerk still appears as
+  // an EXECUTOR option when the clerk-as-executor box is ticked.
   const clerkTargets = targets.filter(
     (person) =>
       person.role === 'SUBJECT_CLERK' &&
       !person.is_central_clerk &&
       person.id !== user?.id,
   );
+  const selectedTarget = targets.find((person) => person.id === selected);
 
   async function assign() {
     if (!selected) return;
     const target = targets.find((person) => person.id === selected);
+
+    // A clerk is picked for one of two DIFFERENT jobs, and the status decides
+    // which one the receiving clerk can act on:
+    //
+    //  * ROUTE (default): status stays 'Forwarded to Subject', the letter's
+    //    department moves to the clerk — the branch clerk then sees the Assign
+    //    box and picks one of their own branch's officers.
+    //  * EXECUTOR: status moves to 'Assigned' — the clerk works the letter
+    //    themselves exactly like an officer (start, progress note, completion).
     const toClerk = target?.role === 'SUBJECT_CLERK';
+    const asExecutor = toClerk && executorMode;
 
     setBusy(true);
     const result = await run(() =>
-      toClerk ? mailApi.routeToClerk(mail.id, target) : mailApi.assign(mail.id, selected),
+      !toClerk || asExecutor
+        ? mailApi.assign(mail.id, selected)
+        : mailApi.routeToClerk(mail.id, target),
     );
     setBusy(false);
 
@@ -410,12 +441,13 @@ function AssignPanel({ mail, selected, onSelect, onChanged, notify, user, permis
         await run(() => mailApi.updateNotes(mail.id, 'subject_clerk_note', note.trim()));
       }
       onSelect(null);
+      setExecutorMode(false);
       setNote('');
       onChanged();
       notify(
-        toClerk
+        toClerk && !asExecutor
           ? t('assign.routedToClerk', { name: target.full_name })
-          : 'Letter assigned.',
+          : t('assign.assigned', { name: target.full_name }),
         'success',
       );
     }
@@ -427,15 +459,18 @@ function AssignPanel({ mail, selected, onSelect, onChanged, notify, user, permis
           <span className="font-medium text-slate-700">{t('assign.officerLabel')}</span>
         <select
           value={selected ?? ''}
-          onChange={(event) => onSelect(event.target.value ? event.target.value : null)}
+          onChange={(event) => {
+            onSelect(event.target.value ? event.target.value : null);
+            setExecutorMode(false);
+          }}
           className="mt-1 w-full rounded-btn border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none"
         >
           <option value="">{t('assign.choose')}</option>
           {officerTargets.length > 0 && (
             <optgroup label={t('assign.officersGroup')}>
-              {officerTargets.map((officer) => (
-                <option key={officer.id} value={officer.id}>
-                  {officer.full_name} — {officer.section_name ?? officer.designation}
+              {officerTargets.map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.full_name} — {person.section_name ?? person.designation}
                 </option>
               ))}
             </optgroup>
@@ -451,6 +486,18 @@ function AssignPanel({ mail, selected, onSelect, onChanged, notify, user, permis
           )}
         </select>
       </label>
+
+      {selectedTarget?.role === 'SUBJECT_CLERK' && (
+        <label className="mt-3 flex items-start gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={executorMode}
+            onChange={(event) => setExecutorMode(event.target.checked)}
+            className="mt-0.5"
+          />
+          <span>{t('assign.clerkAsExecutor')}</span>
+        </label>
+      )}
 
       <label className="mt-3 block text-sm">
           <span className="font-medium text-slate-700">{t('assign.routingNote')}</span>
@@ -481,6 +528,59 @@ function AssignPanel({ mail, selected, onSelect, onChanged, notify, user, permis
         className="mt-3 w-full rounded-btn bg-brand px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-50"
       >
         {busy ? t('assign.submitting') : t('assign.submit')}
+      </button>
+    </Card>
+  );
+}
+
+/**
+ * "Assign this letter to myself" — the subject clerk taking the letter as the
+ * EXECUTOR rather than routing it on.
+ *
+ * One press: `mailApi.assign` with the clerk's own id moves the letter to
+ * 'Assigned' with themselves on `assigned_officer_id`. The state machine then
+ * offers `start`, and because the clerk holds UPDATE_ACTION_STATUS the whole
+ * officer path opens (start -> progress note -> submit completion). Shown while
+ * the letter is at 'Forwarded to Subject' (canAssign) — including letters that
+ * were ROUTED to this clerk, whose assigned_officer_id already holds their id.
+ * The card disappears on its own once the status leaves 'Forwarded to Subject',
+ * because the `assign` action (and so canAssign) goes away with it.
+ */
+function SelfAssignCard({ mail, user, onChanged, notify }) {
+  const { t } = useLanguage();
+  const [busy, setBusy] = useState(false);
+  const { failure, run, clear } = useApiError(t('assign.failed'));
+
+  async function take() {
+    setBusy(true);
+    const result = await run(() => mailApi.assign(mail.id, user.id));
+    setBusy(false);
+    if (result) {
+      onChanged();
+      notify(t('assign.selfAssigned'), 'success');
+    }
+  }
+
+  return (
+    <Card title={t('assign.toSelf')}>
+      <p className="text-sm text-slate-600">{t('assign.toSelfHint')}</p>
+      {failure && (
+        <div className="mt-3">
+          <ErrorNote remedy={failure.remedy} onRetry={failure.retryable ? take : undefined}>
+            {failure.message}
+          </ErrorNote>
+        </div>
+      )}
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => {
+          clear();
+          take();
+        }}
+        className="mt-3 w-full rounded-btn bg-brand px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-50"
+      >
+        {busy ? t('assign.submitting') : t('assign.toSelf')}
       </button>
     </Card>
   );

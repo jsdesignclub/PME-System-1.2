@@ -68,7 +68,9 @@ BEGIN
   ELSIF v_profile.role = 'AO' THEN
     v_perms := ARRAY['WRITE_MINUTES'];
   ELSIF v_profile.role = 'SUBJECT_CLERK' THEN
-    v_perms := ARRAY['CREATE_MAIL','READ_DEPARTMENT_MAIL','WRITE_MINUTES','FORWARD_MAIL','ASSIGN_OFFICER','UPDATE_DUTY_CHART'];
+    v_perms := ARRAY['CREATE_MAIL','READ_DEPARTMENT_MAIL','WRITE_MINUTES','FORWARD_MAIL','ASSIGN_OFFICER','UPDATE_DUTY_CHART','UPDATE_ACTION_STATUS'];
+  ELSIF v_profile.role = 'DEPARTMENT_HEAD' THEN
+    v_perms := ARRAY['READ_DEPARTMENT_MAIL','READ_ASSIGNED_MAIL','WRITE_MINUTES','UPDATE_ACTION_STATUS','UPDATE_DUTY_CHART'];
   ELSIF v_profile.role IN ('OFFICER','TRANSPORT_OFFICER') THEN
     v_perms := ARRAY['READ_ASSIGNED_MAIL','UPDATE_ACTION_STATUS','UPDATE_DUTY_CHART'];
   END IF;
@@ -98,8 +100,26 @@ BEGIN
       v_perms := array_append(v_perms, 'start');
     END IF;
   ELSIF v_record.status::text = 'In Progress' THEN
+    -- The officer no longer completes directly: they forward a completion
+    -- document, which the AO, Secretary or Department Head must approve.
     IF 'UPDATE_ACTION_STATUS' = ANY(v_perms) THEN
-      v_perms := array_append(v_perms, 'complete');
+      v_perms := array_append(v_perms, 'submit_completion');
+    END IF;
+  ELSIF v_record.status::text = 'Pending Approval' THEN
+    -- The addressed role decides, as does an ADMIN/CHIEF_CLERK override.
+    IF v_profile.role IN ('ADMIN','CHIEF_CLERK') THEN
+      v_perms := array_append(v_perms, 'approve_completion');
+      v_perms := array_append(v_perms, 'reject_completion');
+    ELSIF v_profile.role IN ('AO','SECRETARY','DEPARTMENT_HEAD') THEN
+      IF EXISTS (
+        SELECT 1 FROM public.completion_submissions cs
+        WHERE cs.mail_record_id = p_mail_id
+          AND cs.status = 'Pending'
+          AND cs.approver_role::text = v_profile.role::text
+      ) THEN
+        v_perms := array_append(v_perms, 'approve_completion');
+        v_perms := array_append(v_perms, 'reject_completion');
+      END IF;
     END IF;
   END IF;
 
@@ -166,9 +186,10 @@ CREATE POLICY mail_update ON public.mail_records FOR UPDATE TO authenticated USI
         OR (p.role = 'SUBJECT_CLERK'
             AND (p.is_central_clerk
                  OR mail_records.department_id = p.department_id
-                 OR mail_records.created_by_user_id = p.id)
+                 OR mail_records.created_by_user_id = p.id
+                 OR mail_records.assigned_officer_id = p.id)
             AND mail_records.status::text IN ('Logged','Forwarded to AO','Forwarded to Subject'))
-        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER')
+        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER','SUBJECT_CLERK')
             AND mail_records.assigned_officer_id = p.id
             AND mail_records.status::text IN ('Assigned','In Progress'))
       )
@@ -185,8 +206,9 @@ WITH CHECK (
         OR (p.role = 'SUBJECT_CLERK'
             AND (p.is_central_clerk
                  OR mail_records.department_id = p.department_id
-                 OR mail_records.created_by_user_id = p.id))
-        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER')
+                 OR mail_records.created_by_user_id = p.id
+                 OR mail_records.assigned_officer_id = p.id))
+        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER','SUBJECT_CLERK')
             AND mail_records.assigned_officer_id = p.id)
       )
   )

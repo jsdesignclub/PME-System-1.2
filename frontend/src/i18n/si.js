@@ -556,6 +556,12 @@ export const si = Object.freeze({
   'assign.failed': 'එම ලිපිය පත් කළ නොහැකි විය.',
   'assign.assigned': '{name} ට පත් කරන ලදී.',
   'assign.routedToClerk': 'ශාඛා විෂය ලේඛක {name} වෙත යොමු කරන ලදී.',
+  'assign.clerkAsExecutor':
+    'මෙම ලේඛකයා ක්‍රියාත්මක කරන්නා ලෙස පත් කරන්න — ඔවුන් ලිපිය වෙත යොමු නොකර, ඔවුන්ම සකසයි.',
+  'assign.toSelf': 'මෙම ලිපිය මටම පත් කරන්න',
+  'assign.toSelfHint':
+    'ලිපිය ඔබම සකසන්න: ඔබ එය ආරම්භ කර, ප්‍රගති සටහන යොදා, සම්පූර්ණ කිරීමේ වාර්තාව ඔබම ඉදිරිපත් කරයි.',
+  'assign.selfAssigned': 'ලිපිය දැන් ඔබට පත් කර ඇත.',
 
   'nextStep.title': 'ඊළඟ පියවර',
   'nextStep.closed': 'මෙම ලිපිය වසා ඇත. ගොනුව සම්පූර්ණයි.',

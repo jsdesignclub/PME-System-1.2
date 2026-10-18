@@ -82,21 +82,26 @@ CREATE POLICY mail_read ON public.mail_records FOR SELECT TO authenticated USING
 );
 
 -- UPDATE: USING is the OLD row, WITH CHECK is the NEW row. SUBJECT_CLERK moves
--- a letter through Logged -> Forwarded to AO -> Forwarded to Subject.
+-- a letter through Logged -> Forwarded to AO -> Forwarded to Subject; and once a
+-- letter is ASSIGNED to a clerk (self-assign / executor), that clerk starts and
+-- works it exactly like an officer.
 CREATE POLICY mail_update ON public.mail_records FOR UPDATE TO authenticated USING (
   EXISTS (
     SELECT 1 FROM public.profiles p
     WHERE p.id = auth.uid()
       AND (
-        p.role IN ('ADMIN','SECRETARY','CHIEF_CLERK','AO')
+        p.role IN ('ADMIN','SECRETARY','CHIEF_CLERK')
+        -- AO: may only edit a letter while it is sitting in their queue.
+        OR (p.role = 'AO' AND mail_records.status = 'Forwarded to AO')
         OR (p.role = 'SUBJECT_CLERK'
             AND (p.is_central_clerk
                  OR mail_records.department_id = p.department_id
-                 OR mail_records.created_by_user_id = p.id)
-            AND mail_records.status::text IN ('Logged','Forwarded to AO','Forwarded to Subject'))
-        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER')
+                 OR mail_records.created_by_user_id = p.id
+                 OR mail_records.assigned_officer_id = p.id)
+            AND mail_records.status IN ('Logged','Forwarded to AO','Forwarded to Subject'))
+        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER','SUBJECT_CLERK')
             AND mail_records.assigned_officer_id = p.id
-            AND mail_records.status::text IN ('Assigned','In Progress'))
+            AND mail_records.status IN ('Assigned','In Progress'))
       )
   )
 )
@@ -105,12 +110,14 @@ WITH CHECK (
     SELECT 1 FROM public.profiles p
     WHERE p.id = auth.uid()
       AND (
-        p.role IN ('ADMIN','SECRETARY','CHIEF_CLERK','AO')
+        p.role IN ('ADMIN','SECRETARY','CHIEF_CLERK')
+        OR (p.role = 'AO' AND mail_records.status IN ('Forwarded to AO','Forwarded to Subject'))
         OR (p.role = 'SUBJECT_CLERK'
             AND (p.is_central_clerk
                  OR mail_records.department_id = p.department_id
-                 OR mail_records.created_by_user_id = p.id))
-        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER')
+                 OR mail_records.created_by_user_id = p.id
+                 OR mail_records.assigned_officer_id = p.id))
+        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER','SUBJECT_CLERK')
             AND mail_records.assigned_officer_id = p.id)
       )
   )

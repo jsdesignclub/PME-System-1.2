@@ -322,7 +322,7 @@ BEGIN
   ELSIF v_profile.role = 'AO' THEN
     v_perms := ARRAY['WRITE_MINUTES'];
   ELSIF v_profile.role = 'SUBJECT_CLERK' THEN
-    v_perms := ARRAY['CREATE_MAIL','READ_DEPARTMENT_MAIL','WRITE_MINUTES','FORWARD_MAIL','ASSIGN_OFFICER','UPDATE_DUTY_CHART'];
+    v_perms := ARRAY['CREATE_MAIL','READ_DEPARTMENT_MAIL','WRITE_MINUTES','FORWARD_MAIL','ASSIGN_OFFICER','UPDATE_DUTY_CHART','UPDATE_ACTION_STATUS'];
   ELSIF v_profile.role = 'DEPARTMENT_HEAD' THEN
     -- A department head sees their own department's letters and can approve
     -- completion documents addressed to them, but does not log, forward or
@@ -908,8 +908,8 @@ CREATE POLICY mail_update ON public.mail_records FOR UPDATE TO authenticated USI
                  OR mail_records.created_by_user_id = p.id
                  OR mail_records.assigned_officer_id = p.id)
             AND mail_records.status IN ('Logged','Forwarded to AO','Forwarded to Subject'))
-        -- The assigned officer starts (Assigned -> In Progress) and completes.
-        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER')
+        -- The assigned officer/clerk starts (Assigned -> In Progress).
+        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER','SUBJECT_CLERK')
             AND mail_records.assigned_officer_id = p.id
             AND mail_records.status IN ('Assigned','In Progress'))
       )
@@ -929,7 +929,7 @@ WITH CHECK (
                  OR mail_records.department_id = p.department_id
                  OR mail_records.created_by_user_id = p.id
                  OR mail_records.assigned_officer_id = p.id))
-        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER')
+        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER','SUBJECT_CLERK')
             AND mail_records.assigned_officer_id = p.id)
       )
   )
@@ -958,21 +958,23 @@ CREATE POLICY minutes_write ON public.official_minutes FOR INSERT TO authenticat
 
 -- officer_duties
 CREATE POLICY duties_read ON public.officer_duties FOR SELECT TO authenticated USING (true);
--- Write scope: an admin maintains every chart; the CENTRAL (main) subject clerk
--- likewise, because they handle intake for every department; but an ordinary
--- branch subject clerk may only touch duties on officers in their OWN department.
--- Without the department clause a branch clerk could write a duty onto another
--- branch's officer by hand — the UI hides those officers, but the policy is the
--- enforcement. `officer_user_id` is the row's subject, so the check is a
+-- Write scope: an admin maintains every chart; the AO does too (they share the
+-- duty-chart responsibility with the admin and the subject clerks); the CENTRAL
+-- (main) subject clerk likewise, because they handle intake for every department;
+-- but an ordinary branch subject clerk may only touch duties on officers in their
+-- OWN department. Without the department clause a branch clerk could write a duty
+-- onto another branch's officer by hand — the UI hides those officers, but the
+-- policy is the enforcement. `officer_user_id` is the row's subject, so the check is a
 -- correlated lookup on that officer's department. USING is reused as WITH CHECK
 -- because none is declared, so an INSERT and the new side of an UPDATE are both
--- constrained.
+-- constrained. Any other role (including OFFICER) may READ but never write.
 CREATE POLICY duties_write ON public.officer_duties FOR ALL TO authenticated USING (
   EXISTS (
     SELECT 1 FROM public.profiles p
     WHERE p.id = auth.uid()
       AND (
         p.role = 'ADMIN'
+        OR p.role = 'AO'
         OR (p.role = 'SUBJECT_CLERK' AND p.is_central_clerk)
         OR (p.role = 'SUBJECT_CLERK'
             AND EXISTS (

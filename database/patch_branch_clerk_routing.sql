@@ -68,7 +68,7 @@ CREATE POLICY mail_update ON public.mail_records FOR UPDATE TO authenticated USI
                  OR mail_records.assigned_officer_id = p.id)
             AND mail_records.status IN ('Logged','Forwarded to AO','Forwarded to Subject'))
         -- The assigned officer starts (Assigned -> In Progress) and completes.
-        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER')
+        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER','SUBJECT_CLERK')
             AND mail_records.assigned_officer_id = p.id
             AND mail_records.status IN ('Assigned','In Progress'))
       )
@@ -90,7 +90,7 @@ WITH CHECK (
                  OR mail_records.department_id = p.department_id
                  OR mail_records.created_by_user_id = p.id
                  OR mail_records.assigned_officer_id = p.id))
-        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER')
+        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER','SUBJECT_CLERK')
             AND mail_records.assigned_officer_id = p.id)
       )
   )

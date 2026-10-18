@@ -82,7 +82,9 @@ BEGIN
   ELSIF v_profile.role = 'AO' THEN
     v_perms := ARRAY['WRITE_MINUTES'];
   ELSIF v_profile.role = 'SUBJECT_CLERK' THEN
-    v_perms := ARRAY['CREATE_MAIL','READ_DEPARTMENT_MAIL','WRITE_MINUTES','FORWARD_MAIL','ASSIGN_OFFICER','UPDATE_DUTY_CHART'];
+    v_perms := ARRAY['CREATE_MAIL','READ_DEPARTMENT_MAIL','WRITE_MINUTES','FORWARD_MAIL','ASSIGN_OFFICER','UPDATE_DUTY_CHART','UPDATE_ACTION_STATUS'];
+  ELSIF v_profile.role = 'DEPARTMENT_HEAD' THEN
+    v_perms := ARRAY['READ_DEPARTMENT_MAIL','READ_ASSIGNED_MAIL','WRITE_MINUTES','UPDATE_ACTION_STATUS','UPDATE_DUTY_CHART'];
   ELSIF v_profile.role IN ('OFFICER','TRANSPORT_OFFICER') THEN
     v_perms := ARRAY['READ_ASSIGNED_MAIL','UPDATE_ACTION_STATUS','UPDATE_DUTY_CHART'];
   END IF;
@@ -113,8 +115,26 @@ BEGIN
       v_perms := array_append(v_perms, 'start');
     END IF;
   ELSIF v_record.status::text = 'In Progress' THEN
+    -- The officer no longer completes directly: they forward a completion
+    -- document, which the AO, Secretary or Department Head must approve.
     IF 'UPDATE_ACTION_STATUS' = ANY(v_perms) THEN
-      v_perms := array_append(v_perms, 'complete');
+      v_perms := array_append(v_perms, 'submit_completion');
+    END IF;
+  ELSIF v_record.status::text = 'Pending Approval' THEN
+    -- The addressed role decides, as does an ADMIN/CHIEF_CLERK override.
+    IF v_profile.role IN ('ADMIN','CHIEF_CLERK') THEN
+      v_perms := array_append(v_perms, 'approve_completion');
+      v_perms := array_append(v_perms, 'reject_completion');
+    ELSIF v_profile.role IN ('AO','SECRETARY','DEPARTMENT_HEAD') THEN
+      IF EXISTS (
+        SELECT 1 FROM public.completion_submissions cs
+        WHERE cs.mail_record_id = p_mail_id
+          AND cs.status = 'Pending'
+          AND cs.approver_role::text = v_profile.role::text
+      ) THEN
+        v_perms := array_append(v_perms, 'approve_completion');
+        v_perms := array_append(v_perms, 'reject_completion');
+      END IF;
     END IF;
   END IF;
 
@@ -148,11 +168,12 @@ CREATE POLICY mail_read ON public.mail_records FOR SELECT TO authenticated USING
           )
         ))
         OR (p.role = 'SUBJECT_CLERK' AND (
-          mail_records.department_id = p.department_id
-          OR (mail_records.department_id IS NULL AND mail_records.created_by_user_id = p.id)
+          p.is_central_clerk
+          OR mail_records.created_by_user_id = p.id
+          OR mail_records.department_id = p.department_id
           OR mail_records.assigned_officer_id = p.id
         ))
-        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER') AND mail_records.assigned_officer_id = p.id)
+        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER','SUBJECT_CLERK') AND mail_records.assigned_officer_id = p.id)
       )
       AND NOT (p.role IN ('SUBJECT_CLERK','OFFICER','TRANSPORT_OFFICER') AND mail_records.priority = 'Confidential')
   )
@@ -169,7 +190,9 @@ WITH CHECK (
 );
 
 -- UPDATE: USING is the OLD row, WITH CHECK is the NEW row. SUBJECT_CLERK now
--- moves a letter through Logged -> Forwarded to AO -> Forwarded to Subject.
+-- moves a letter through Logged -> Forwarded to AO -> Forwarded to Subject, and
+-- once a letter is ASSIGNED to a clerk that clerk starts and works it like an
+-- officer (self-assign / executor).
 CREATE POLICY mail_update ON public.mail_records FOR UPDATE TO authenticated USING (
   EXISTS (
     SELECT 1 FROM public.profiles p
@@ -179,10 +202,12 @@ CREATE POLICY mail_update ON public.mail_records FOR UPDATE TO authenticated USI
         -- AO: may only edit a letter while it is sitting in their queue.
         OR (p.role = 'AO' AND mail_records.status::text = 'Forwarded to AO')
         OR (p.role = 'SUBJECT_CLERK'
-            AND (mail_records.department_id = p.department_id
-                 OR mail_records.created_by_user_id = p.id)
+            AND (p.is_central_clerk
+                 OR mail_records.department_id = p.department_id
+                 OR mail_records.created_by_user_id = p.id
+                 OR mail_records.assigned_officer_id = p.id)
             AND mail_records.status::text IN ('Logged','Forwarded to AO','Forwarded to Subject'))
-        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER')
+        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER','SUBJECT_CLERK')
             AND mail_records.assigned_officer_id = p.id
             AND mail_records.status::text IN ('Assigned','In Progress'))
       )
@@ -197,9 +222,11 @@ WITH CHECK (
         -- AO: the new row is either still in their queue or back with the clerk.
         OR (p.role = 'AO' AND mail_records.status::text IN ('Forwarded to AO','Forwarded to Subject'))
         OR (p.role = 'SUBJECT_CLERK'
-            AND (mail_records.department_id = p.department_id
-                 OR mail_records.created_by_user_id = p.id))
-        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER')
+            AND (p.is_central_clerk
+                 OR mail_records.department_id = p.department_id
+                 OR mail_records.created_by_user_id = p.id
+                 OR mail_records.assigned_officer_id = p.id))
+        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER','SUBJECT_CLERK')
             AND mail_records.assigned_officer_id = p.id)
       )
   )
