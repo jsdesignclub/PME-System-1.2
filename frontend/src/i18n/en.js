@@ -107,6 +107,9 @@ export const en = Object.freeze({
   // --- Workflow states -----------------------------------------------------
   'status.Logged': 'Logged',
   'status.Forwarded to AO': 'Forwarded to AO',
+  // The same stored status, for a letter that arrived at a branch. Not a state
+  // of its own: `endorser_role` decides which of the two labels is shown.
+  'status.Forwarded to Branch Head': 'Forwarded to Branch Head',
   'status.Forwarded to Subject': 'Forwarded to Subject',
   'status.Assigned': 'Assigned',
   'status.In Progress': 'In Progress',
@@ -573,6 +576,16 @@ export const en = Object.freeze({
   'forward.sent': 'Forwarded to the Administrative Officer.',
   'forward.failed': 'That letter could not be forwarded to the AO.',
   'forward.retry': 'Refresh this letter',
+
+  // A branch letter is endorsed by that branch's Department Head, not the AO.
+  'forward.branchTitle': 'Send to your Branch Head',
+  'forward.branchHelp':
+    'Hand the letter to your Department Head for the primary minute. The head ' +
+    'writes it on paper; you record it here on the next step, and the letter ' +
+    'comes back to you to assign an officer.',
+  'forward.branchSubmit': 'Forward to Branch Head',
+  'forward.branchSent': 'Forwarded to the Branch Head.',
+  'forward.branchFailed': 'That letter could not be forwarded to the Branch Head.',
 
   'rail.title': 'Workflow progress',
   'rail.minutesTitle':

@@ -154,6 +154,7 @@ CREATE POLICY minutes_write ON public.official_minutes FOR INSERT TO authenticat
          AND p.role = 'SUBJECT_CLERK'
          AND p.is_central_clerk = TRUE
          AND m.status::text = 'Forwarded to AO'
+         AND COALESCE(m.endorser_role, 'AO') = 'AO'
          AND NOT EXISTS (
            SELECT 1 FROM public.official_minutes om2
             WHERE om2.mail_record_id = m.id
@@ -180,6 +181,7 @@ CREATE POLICY minutes_write ON public.official_minutes FOR INSERT TO authenticat
         AND p.role = 'SUBJECT_CLERK'
         AND p.department_id = m.department_id
         AND m.status::text = 'Forwarded to AO'
+        AND COALESCE(m.endorser_role, 'AO') = 'DEPARTMENT_HEAD'
         AND NOT EXISTS (SELECT 1 FROM public.official_minutes om2 WHERE om2.mail_record_id = m.id)
         AND a.role = 'DEPARTMENT_HEAD'
         AND a.department_id = m.department_id

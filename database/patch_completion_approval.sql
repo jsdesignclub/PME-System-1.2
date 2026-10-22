@@ -159,11 +159,16 @@ BEGIN
   ELSIF v_record.status::text = 'Forwarded to AO' THEN
     -- The MAIN subject clerk may also record the minute on the AO's behalf,
     -- but only while the letter carries no minute yet.
-    IF v_profile.role IN ('AO','ADMIN','SECRETARY','CHIEF_CLERK') THEN
+    IF v_profile.role IN ('ADMIN','SECRETARY','CHIEF_CLERK') THEN
+      v_perms := array_append(v_perms, 'add_minutes');
+    ELSIF v_profile.role = 'AO'
+          AND COALESCE(v_record.endorser_role, 'AO') = 'AO' THEN
       v_perms := array_append(v_perms, 'add_minutes');
     ELSIF v_profile.role = 'SUBJECT_CLERK'
-          AND (v_profile.is_central_clerk
-               OR v_record.department_id = v_profile.department_id) THEN
+          AND ((v_profile.is_central_clerk
+                AND COALESCE(v_record.endorser_role, 'AO') = 'AO')
+               OR (COALESCE(v_record.endorser_role, 'AO') = 'DEPARTMENT_HEAD'
+                   AND v_record.department_id = v_profile.department_id)) THEN
       IF NOT EXISTS (
         SELECT 1 FROM public.official_minutes om WHERE om.mail_record_id = p_mail_id
       ) THEN

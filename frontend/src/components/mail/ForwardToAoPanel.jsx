@@ -1,5 +1,12 @@
 /**
- * Intake: send the logged letter to the Administrative Officer.
+ * Intake: send the logged letter to whoever writes its primary minute.
+ *
+ * The step is stored as 'Forwarded to AO', but that name describes a MINISTRY
+ * letter only. A letter that arrived at a branch never goes to the AO: the
+ * branch clerk carries it to their own Department Head, who endorses it, and
+ * types the head's minute afterwards. `endorser_role` on the letter records
+ * which of the two is true, and this panel chooses its words from the caller's
+ * profile — the same profile the server marks the letter from.
  *
  * WHY THIS PANEL EXISTS. The intake workflow is:
  *
@@ -30,14 +37,29 @@ import { useState } from 'react';
 
 import * as mailApi from '../../api/mailApi.js';
 import { useApiError } from '../../hooks/useApiError.js';
+import { useAuth } from '../../hooks/useAuth.js';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { Card } from '../common/Card.jsx';
 import { ErrorNote } from '../common/ErrorNote.jsx';
 
 export function ForwardToAoPanel({ letter, notify, onChanged }) {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [busy, setBusy] = useState(false);
-  const { failure, run, clear } = useApiError(t('forward.failed'));
+
+  // A letter that arrived at a BRANCH is endorsed by that branch's Department
+  // Head, not by the ministry AO: the clerk carries the paper to their own head
+  // and types the head's minute afterwards. The server marks the letter that way
+  // from this same profile (see `forwardToAo`), so the wording here and the
+  // policy agree without the client sending a thing.
+  const branch = user?.role === 'SUBJECT_CLERK' && !user?.is_central_clerk;
+  const titleKey = branch ? 'forward.branchTitle' : 'forward.title';
+  const helpKey = branch ? 'forward.branchHelp' : 'forward.help';
+  const submitKey = branch ? 'forward.branchSubmit' : 'forward.submit';
+  const sentKey = branch ? 'forward.branchSent' : 'forward.sent';
+  const failedKey = branch ? 'forward.branchFailed' : 'forward.failed';
+
+  const { failure, run, clear } = useApiError(t(failedKey));
 
   async function forward() {
     clear();
@@ -46,14 +68,14 @@ export function ForwardToAoPanel({ letter, notify, onChanged }) {
     setBusy(false);
 
     if (result) {
-      notify?.(t('forward.sent'), 'success');
+      notify?.(t(sentKey), 'success');
       onChanged();
     }
   }
 
   return (
-    <Card title={t('forward.title')}>
-      <p className="text-sm text-slate-600">{t('forward.help')}</p>
+    <Card title={t(titleKey)}>
+      <p className="text-sm text-slate-600">{t(helpKey)}</p>
 
       {failure && (
         <div className="mt-3">
@@ -76,7 +98,7 @@ export function ForwardToAoPanel({ letter, notify, onChanged }) {
         onClick={forward}
         className="mt-3 w-full rounded-btn bg-brand px-4 py-2 text-sm font-medium text-ink transition hover:brightness-95 disabled:opacity-50"
       >
-        {busy ? t('forward.sending') : t('forward.submit')}
+        {busy ? t('forward.sending') : t(submitKey)}
       </button>
     </Card>
   );

@@ -95,7 +95,7 @@ export function MailTable({ categories, ...props }) {
       key: 'status',
       header: t('common.status'),
       sortable: true,
-      render: (row) => <StatusBadge status={row.status} />,
+      render: (row) => <StatusBadge status={row.status} endorserRole={row.endorser_role} />,
     },
     {
       key: 'priority',

@@ -110,9 +110,28 @@ export async function getById(id) {
       p_mail_id: id,
       p_user_id: user.id,
     });
-    data.available_actions = (actions ?? []).map((action) => ({
+    const available = actions ?? [];
+
+    // The same action sends a ministry letter to the AO and a branch letter to
+    // the branch head — the letter's `endorser_role` decides which it is on the
+    // move, but the wording is shown BEFORE the move. Ask only when the button
+    // is actually on offer, and never let a failed profile read break the page:
+    // the label is a hint, not a gate.
+    const labels = { ...ACTION_LABELS };
+    if (available.includes('forward_to_ao')) {
+      const { data: me } = await supabase
+        .from('profiles')
+        .select('role,is_central_clerk')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (me?.role === 'SUBJECT_CLERK' && !me.is_central_clerk) {
+        labels.forward_to_ao = 'Forward to branch head';
+      }
+    }
+
+    data.available_actions = available.map((action) => ({
       action,
-      label: ACTION_LABELS[action] ?? action,
+      label: labels[action] ?? action,
     }));
   } else {
     data.available_actions = [];
@@ -420,6 +439,16 @@ function requireOneRow(data, message) {
   return data[0];
 }
 
+/**
+ * Send a logged letter to whoever writes its primary minute.
+ *
+ * The status is always 'Forwarded to AO' — it is the step's storage name, not a
+ * statement about WHO endorses. `mail_records.endorser_role` says that, and a
+ * trigger sets it from the caller's profile: a branch clerk's letter waits on
+ * their own Department Head, everyone else's on the Administrative Officer. The
+ * client deliberately sends no marker, so the browser cannot choose the
+ * endorser; the row it reads back carries the one the server decided.
+ */
 export async function forwardToAo(id) {
   const { data, error } = await supabase
     .from('mail_records')
@@ -430,7 +459,7 @@ export async function forwardToAo(id) {
   if (error) throw error;
   return requireOneRow(
     data,
-    'The letter could not be forwarded to the AO. It may have been moved by another user, or your role may not permit changing it.',
+    'The letter could not be forwarded. It may have been moved by another user, or your role may not permit changing it.',
   );
 }
 

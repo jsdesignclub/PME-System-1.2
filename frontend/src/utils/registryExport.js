@@ -22,12 +22,28 @@ import { formatDate, isoToday } from './dateUtils.js';
  * language the reader chose. `value(row)` never throws on a missing field - a
  * blank cell is a blank cell, not a crashed export.
  */
+/**
+ * The status cell, worded for the reader.
+ *
+ * 'Forwarded to AO' is one stored value covering two queues: a ministry letter
+ * waiting on the AO, and a letter that arrived at a branch waiting on that
+ * branch's Department Head (`mail_records.endorser_role`). The export names the
+ * second one, because a filed sheet that says "Forwarded to AO" about a branch
+ * letter sends the reader to the wrong desk.
+ */
+export function statusText(row) {
+  if (row?.status === 'Forwarded to AO' && row?.endorser_role === 'DEPARTMENT_HEAD') {
+    return 'Forwarded to Branch Head';
+  }
+  return row?.status ?? '';
+}
+
 export const REGISTRY_COLUMNS = [
   { key: 'day_stamp_no', header: 'print.dayStamp', value: (row) => row.day_stamp_no ?? '' },
   { key: 'letter_ref_no', header: 'print.reference', value: (row) => row.letter_ref_no ?? '' },
   { key: 'subject', header: 'print.subject', value: (row) => row.subject ?? '' },
   { key: 'sender_name', header: 'mail.sender', value: (row) => row.sender_name ?? '' },
-  { key: 'status', header: 'common.status', value: (row) => row.status ?? '' },
+  { key: 'status', header: 'common.status', value: (row) => statusText(row) },
   { key: 'priority', header: 'common.priority', value: (row) => row.priority ?? '' },
   { key: 'category', header: 'mail.category', value: (row) => row.category ?? '' },
   { key: 'assigned_officer_id', header: 'mail.assignedOfficer', value: (row) => row.assigned_officer?.full_name ?? '' },

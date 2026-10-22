@@ -125,18 +125,38 @@ BEGIN
 
   IF NEW.status IS DISTINCT FROM OLD.status THEN
     IF NEW.status::text = 'Forwarded to AO' THEN
-      -- Every active AO owns the shared queue, so all of them are told.
-      PERFORM public.push_notification(p.id, 'forwarded_to_ao', NEW.id, v_payload)
-        FROM public.profiles p
-       WHERE p.role = 'AO'
-         AND p.is_active
-         AND p.id <> COALESCE(v_actor, v_nil);
+      -- A letter that arrived at a BRANCH is waiting on that branch's Department
+      -- Head, not the ministry AO (`endorser_role`), so the two queues are told
+      -- separately. Every active AO owns the shared ministry queue, so all of
+      -- them are told; a branch has one head.
+      IF COALESCE(NEW.endorser_role, 'AO') = 'DEPARTMENT_HEAD' THEN
+        PERFORM public.push_notification(h.id, 'forwarded_to_ao', NEW.id, v_payload)
+          FROM public.profiles h
+         WHERE h.role = 'DEPARTMENT_HEAD'
+           AND h.department_id = NEW.department_id
+           AND h.is_active
+           AND h.id <> COALESCE(v_actor, v_nil);
+      ELSE
+        PERFORM public.push_notification(p.id, 'forwarded_to_ao', NEW.id, v_payload)
+          FROM public.profiles p
+         WHERE p.role = 'AO'
+           AND p.is_active
+           AND p.id <> COALESCE(v_actor, v_nil);
+      END IF;
 
     ELSIF NEW.status::text = 'Forwarded to Subject' THEN
-      -- The AO has recorded their minute and the paper is back with the desk that
-      -- logged it.
+      -- The endorser has recorded their minute and the paper is back with the
+      -- desk that logged it. A clerk who recorded the minute ON BEHALF of the
+      -- endorser has just done that step themselves, so they are not told the
+      -- letter "came back": `recorded_by_user_id` is set only on a delegated
+      -- minute.
       IF NEW.created_by_user_id IS NOT NULL
-         AND NEW.created_by_user_id <> COALESCE(v_actor, v_nil) THEN
+         AND NEW.created_by_user_id <> COALESCE(v_actor, v_nil)
+         AND NOT EXISTS (
+           SELECT 1 FROM public.official_minutes om
+           WHERE om.mail_record_id = NEW.id
+             AND om.recorded_by_user_id = v_actor
+         ) THEN
         PERFORM public.push_notification(NEW.created_by_user_id, 'returned', NEW.id, v_payload);
       END IF;
 

@@ -64,9 +64,18 @@ function Chip({ className, children, title }) {
  * matches nothing in the database — a badge keyed on the short form renders the
  * unknown branch, which is grey, for every forwarded letter in the registry.
  */
-export function StatusBadge({ status }) {
+export function StatusBadge({ status, endorserRole = null }) {
   const { t } = useLanguage();
   const known = Object.hasOwn(STATUS_CLASS, status);
+
+  // 'Forwarded to AO' is two different steps wearing one status value: a ministry
+  // letter waits for the AO, a letter that arrived at a branch waits for that
+  // branch's Department Head (`mail_records.endorser_role`). The value is not
+  // renamed because that would rewrite the history of every letter already at
+  // the step; the badge just says which queue the paper is actually in. Colour is
+  // shared: both are "in transit", which is what the chip means.
+  const labelledAsBranch = status === 'Forwarded to AO' && endorserRole === 'DEPARTMENT_HEAD';
+  const labelKey = labelledAsBranch ? 'status.Forwarded to Branch Head' : `status.${status}`;
 
   // The label is translated by `t()`, keyed on the raw status string. That key
   // space is `status.<the value>` rather than `status.logged`, so the SAME table
@@ -78,7 +87,7 @@ export function StatusBadge({ status }) {
       className={known ? STATUS_CLASS[status] : UNKNOWN_STATUS_CLASS}
       title={known ? undefined : t('status.unknown', { status })}
     >
-      {status ? t(`status.${status}`) : '—'}
+      {status ? t(labelKey) : '—'}
     </Chip>
   );
 }

@@ -113,6 +113,15 @@ CREATE TABLE public.mail_records (
   category              TEXT NOT NULL DEFAULT 'General Administration',
   has_attachment        BOOLEAN NOT NULL DEFAULT FALSE,
   status                mail_status NOT NULL DEFAULT 'Logged',
+  -- Who is expected to write the MINUTE while the letter sits at
+  -- 'Forwarded to AO'. The status name is historical: the step is "with the
+  -- executive who endorses it", and who that is depends on where the letter
+  -- went. 'AO' is a ministry letter (the Administrative Officer's queue);
+  -- 'DEPARTMENT_HEAD' is a letter that arrived straight at a BRANCH, where its
+  -- own head endorses it. NULL means 'AO' (letters logged before this marker
+  -- existed). The marker is what keeps a branch letter OFF the AO's queue and
+  -- makes the step read "Forwarded to Branch Head" on screen.
+  endorser_role         TEXT NULL,
   assigned_officer_id   UUID NULL REFERENCES public.profiles(id) ON DELETE SET NULL,
   assigned_date         TIMESTAMPTZ NULL,
   subject_clerk_note    TEXT NULL,
@@ -360,15 +369,25 @@ BEGIN
     END IF;
   ELSIF v_record.status::text = 'Forwarded to AO' THEN
     -- The endorsing executive records the primary minute; the letter then
-    -- returns to the clerk. For a letter the ministry AO received that is the
-    -- AO/Secretary. For a letter that arrived straight at a BRANCH it is that
-    -- branch's Department Head, and the branch clerk types it on the head's
-    -- behalf — so a clerk may record here only for their OWN department.
-    IF v_profile.role IN ('AO','ADMIN','SECRETARY','CHIEF_CLERK') THEN
+    -- returns to the clerk. The status name is historical — the step is "with
+    -- whoever endorses this letter", and `endorser_role` says who that is:
+    --
+    --   * 'AO' (or NULL, for letters logged before the marker existed) — a
+    --     MINISTRY letter. The AO writes it (or an oversight role), and the
+    --     MAIN (central) clerk may type it on their behalf.
+    --   * 'DEPARTMENT_HEAD' — a letter that arrived straight at a BRANCH. Its
+    --     own head writes it and the branch clerk types it. The AO is not
+    --     involved and does not get the action.
+    IF v_profile.role IN ('ADMIN','SECRETARY','CHIEF_CLERK') THEN
+      v_perms := array_append(v_perms, 'add_minutes');
+    ELSIF v_profile.role = 'AO'
+          AND COALESCE(v_record.endorser_role, 'AO') = 'AO' THEN
       v_perms := array_append(v_perms, 'add_minutes');
     ELSIF v_profile.role = 'SUBJECT_CLERK'
-          AND (v_profile.is_central_clerk
-               OR v_record.department_id = v_profile.department_id) THEN
+          AND ((v_profile.is_central_clerk
+                AND COALESCE(v_record.endorser_role, 'AO') = 'AO')
+               OR (COALESCE(v_record.endorser_role, 'AO') = 'DEPARTMENT_HEAD'
+                   AND v_record.department_id = v_profile.department_id)) THEN
       -- Only allow if no minute has been added yet (by anyone) to prevent duplicates
       IF NOT EXISTS (SELECT 1 FROM public.official_minutes om WHERE om.mail_record_id = p_mail_id) THEN
         v_perms := array_append(v_perms, 'add_minutes');
@@ -688,6 +707,48 @@ BEGIN
 END;
 $$;
 
+-- WHO a forwarded letter is waiting on for its minute.
+--
+-- 'Forwarded to AO' is the storage name of the step, not a claim about the
+-- endorser. A letter that arrived at a BRANCH waits on that branch's Department
+-- Head and is never seen by the ministry AO; a ministry letter waits on the AO.
+-- `endorser_role` records which, and this BEFORE trigger sets it at the only
+-- moment the question is answered: the clerk's forward.
+--
+-- It is decided from the ACTING user's profile, not from anything the browser
+-- sends, so the client cannot choose the endorser (and cannot leak its own
+-- letter into the AO queue). It is also BEFORE the row is checked, so the
+-- values the policies and the notification trigger read are already final.
+CREATE OR REPLACE FUNCTION public.set_endorser_role()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.status::text = 'Forwarded to AO'
+     AND (TG_OP = 'INSERT' OR OLD.status::text IS DISTINCT FROM 'Forwarded to AO') THEN
+    IF EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id = auth.uid()
+        AND p.role = 'SUBJECT_CLERK'
+        AND p.is_central_clerk IS NOT TRUE
+    ) THEN
+      NEW.endorser_role := 'DEPARTMENT_HEAD';
+    ELSE
+      NEW.endorser_role := 'AO';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_set_endorser_role ON public.mail_records;
+CREATE TRIGGER trg_set_endorser_role
+BEFORE INSERT OR UPDATE ON public.mail_records
+FOR EACH ROW
+EXECUTE FUNCTION public.set_endorser_role();
+
 -- Assignment and status transitions on a letter.
 CREATE OR REPLACE FUNCTION public.notify_on_mail_change()
 RETURNS TRIGGER
@@ -714,11 +775,26 @@ BEGIN
 
   IF NEW.status IS DISTINCT FROM OLD.status THEN
     IF NEW.status::text = 'Forwarded to AO' THEN
-      PERFORM public.push_notification(p.id, 'forwarded_to_ao', NEW.id, v_payload)
-        FROM public.profiles p
-       WHERE p.role = 'AO'
-         AND p.is_active
-         AND p.id <> COALESCE(v_actor, v_nil);
+      -- A letter that arrived at a BRANCH is waiting on that branch's head, not
+      -- on the ministry AO (`endorser_role`, set by the BEFORE trigger above).
+      -- Telling every AO about a branch letter is the confusion the marker
+      -- exists to remove, so the two queues are notified separately. The type is
+      -- the same for both: the notification says "a letter is waiting in your
+      -- queue", which is true of either.
+      IF COALESCE(NEW.endorser_role, 'AO') = 'DEPARTMENT_HEAD' THEN
+        PERFORM public.push_notification(h.id, 'forwarded_to_ao', NEW.id, v_payload)
+          FROM public.profiles h
+         WHERE h.role = 'DEPARTMENT_HEAD'
+           AND h.department_id = NEW.department_id
+           AND h.is_active
+           AND h.id <> COALESCE(v_actor, v_nil);
+      ELSE
+        PERFORM public.push_notification(p.id, 'forwarded_to_ao', NEW.id, v_payload)
+          FROM public.profiles p
+         WHERE p.role = 'AO'
+           AND p.is_active
+           AND p.id <> COALESCE(v_actor, v_nil);
+      END IF;
 
     ELSIF NEW.status::text = 'Forwarded to Subject' THEN
       -- The letter came back from the AO, so the clerk who logged it is told to
@@ -878,12 +954,19 @@ CREATE POLICY mail_read ON public.mail_records FOR SELECT TO authenticated USING
       AND (
         -- ADMIN, SECRETARY, CHIEF_CLERK: READ_ALL_MAIL
         p.role IN ('ADMIN','SECRETARY','CHIEF_CLERK')
-        -- AO: ONLY the letters the clerk has forwarded to them (their queue),
+        -- AO: ONLY the letters the clerk has forwarded to THEM (their queue),
         -- plus any letter they have already written a minute on, so that
         -- submitting the minute does not immediately turn the page into a 404.
         -- Plus any letter with a completion document awaiting THEIR approval.
+        --
+        -- A letter that arrived at a BRANCH is in that branch head's queue, not
+        -- the AO's: it carries endorser_role = 'DEPARTMENT_HEAD' and is left out
+        -- of the AO's queue entirely. Without this the AO would open it, and
+        -- could minute it, which is exactly the confusion the branch flow
+        -- exists to avoid.
         OR (p.role = 'AO' AND (
-          mail_records.status::text = 'Forwarded to AO'
+          (mail_records.status::text = 'Forwarded to AO'
+           AND COALESCE(mail_records.endorser_role, 'AO') = 'AO')
           OR EXISTS (
             SELECT 1 FROM public.official_minutes om
             WHERE om.mail_record_id = mail_records.id
@@ -963,7 +1046,10 @@ CREATE POLICY mail_update ON public.mail_records FOR UPDATE TO authenticated USI
         p.role IN ('ADMIN','SECRETARY','CHIEF_CLERK')
         -- AO: may only edit a letter while it is sitting in their queue. The
         -- WITH CHECK below then allows the one transition out (to the clerk).
-        OR (p.role = 'AO' AND mail_records.status = 'Forwarded to AO')
+        -- A branch letter is not in their queue (see mail_read).
+        OR (p.role = 'AO'
+            AND mail_records.status = 'Forwarded to AO'
+            AND COALESCE(mail_records.endorser_role, 'AO') = 'AO')
         -- SUBJECT_CLERK owns intake and routing: forward to the AO, record the
         -- AO's minutes, then assign. The central clerk handles any department;
         -- an ordinary clerk any letter in their department or one they logged,
@@ -990,7 +1076,9 @@ WITH CHECK (
         p.role IN ('ADMIN','SECRETARY','CHIEF_CLERK')
         -- AO: the new row may only sit at their queue or at the clerk's, i.e.
         -- the AO recorded a minute and handed the paper back.
-        OR (p.role = 'AO' AND mail_records.status IN ('Forwarded to AO','Forwarded to Subject'))
+        OR (p.role = 'AO'
+            AND mail_records.status IN ('Forwarded to AO','Forwarded to Subject')
+            AND COALESCE(mail_records.endorser_role, 'AO') = 'AO')
         OR (p.role = 'SUBJECT_CLERK'
             AND (p.is_central_clerk
                  OR mail_records.department_id = p.department_id
@@ -1041,6 +1129,7 @@ CREATE POLICY minutes_write ON public.official_minutes FOR INSERT TO authenticat
         AND p.role = 'SUBJECT_CLERK'
         AND p.is_central_clerk = TRUE
         AND m.status::text = 'Forwarded to AO'
+        AND COALESCE(m.endorser_role, 'AO') = 'AO'
         AND NOT EXISTS (SELECT 1 FROM public.official_minutes om2 WHERE om2.mail_record_id = m.id)
         AND a.role IN ('AO','ADMIN','SECRETARY','CHIEF_CLERK')
         -- The clerk may NAME an executive as the author, but may not rename
@@ -1064,6 +1153,7 @@ CREATE POLICY minutes_write ON public.official_minutes FOR INSERT TO authenticat
         AND p.role = 'SUBJECT_CLERK'
         AND p.department_id = m.department_id
         AND m.status::text = 'Forwarded to AO'
+        AND COALESCE(m.endorser_role, 'AO') = 'DEPARTMENT_HEAD'
         AND NOT EXISTS (SELECT 1 FROM public.official_minutes om2 WHERE om2.mail_record_id = m.id)
         AND a.role = 'DEPARTMENT_HEAD'
         AND a.department_id = m.department_id

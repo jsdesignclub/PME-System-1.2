@@ -73,6 +73,7 @@ CREATE POLICY minutes_write ON public.official_minutes FOR INSERT TO authenticat
          AND p.role = 'SUBJECT_CLERK'
          AND p.is_central_clerk = TRUE
          AND m.status::text = 'Forwarded to AO'
+         AND COALESCE(m.endorser_role, 'AO') = 'AO'
          AND NOT EXISTS (
            SELECT 1 FROM public.official_minutes om2
             WHERE om2.mail_record_id = m.id
@@ -99,6 +100,7 @@ CREATE POLICY minutes_write ON public.official_minutes FOR INSERT TO authenticat
         AND p.role = 'SUBJECT_CLERK'
         AND p.department_id = m.department_id
         AND m.status::text = 'Forwarded to AO'
+        AND COALESCE(m.endorser_role, 'AO') = 'DEPARTMENT_HEAD'
         AND NOT EXISTS (SELECT 1 FROM public.official_minutes om2 WHERE om2.mail_record_id = m.id)
         AND a.role = 'DEPARTMENT_HEAD'
         AND a.department_id = m.department_id
@@ -170,11 +172,16 @@ BEGIN
     -- The AO records the primary minute; the letter then returns to the clerk.
     -- The MAIN subject clerk may also record the minute on the AO's behalf
     -- when the AO has not yet added one.
-    IF v_profile.role IN ('AO','ADMIN','SECRETARY','CHIEF_CLERK') THEN
+    IF v_profile.role IN ('ADMIN','SECRETARY','CHIEF_CLERK') THEN
+      v_perms := array_append(v_perms, 'add_minutes');
+    ELSIF v_profile.role = 'AO'
+          AND COALESCE(v_record.endorser_role, 'AO') = 'AO' THEN
       v_perms := array_append(v_perms, 'add_minutes');
     ELSIF v_profile.role = 'SUBJECT_CLERK'
-          AND (v_profile.is_central_clerk
-               OR v_record.department_id = v_profile.department_id) THEN
+          AND ((v_profile.is_central_clerk
+                AND COALESCE(v_record.endorser_role, 'AO') = 'AO')
+               OR (COALESCE(v_record.endorser_role, 'AO') = 'DEPARTMENT_HEAD'
+                   AND v_record.department_id = v_profile.department_id)) THEN
       -- Only while the letter carries NO minute: once the AO has recorded
       -- theirs, the clerk must not add a competing endorsement.
       IF NOT EXISTS (
@@ -277,11 +284,22 @@ BEGIN
 
   IF NEW.status IS DISTINCT FROM OLD.status THEN
     IF NEW.status::text = 'Forwarded to AO' THEN
-      PERFORM public.push_notification(p.id, 'forwarded_to_ao', NEW.id, v_payload)
-        FROM public.profiles p
-       WHERE p.role = 'AO'
-         AND p.is_active
-         AND p.id <> COALESCE(v_actor, v_nil);
+      -- A branch letter waits on that branch's head, not the ministry AO
+      -- (`endorser_role`); the two queues are notified separately.
+      IF COALESCE(NEW.endorser_role, 'AO') = 'DEPARTMENT_HEAD' THEN
+        PERFORM public.push_notification(h.id, 'forwarded_to_ao', NEW.id, v_payload)
+          FROM public.profiles h
+         WHERE h.role = 'DEPARTMENT_HEAD'
+           AND h.department_id = NEW.department_id
+           AND h.is_active
+           AND h.id <> COALESCE(v_actor, v_nil);
+      ELSE
+        PERFORM public.push_notification(p.id, 'forwarded_to_ao', NEW.id, v_payload)
+          FROM public.profiles p
+         WHERE p.role = 'AO'
+           AND p.is_active
+           AND p.id <> COALESCE(v_actor, v_nil);
+      END IF;
 
     ELSIF NEW.status::text = 'Forwarded to Subject' THEN
       IF NEW.created_by_user_id IS NOT NULL

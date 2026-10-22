@@ -92,11 +92,16 @@ BEGIN
     -- The AO records the primary minute; the letter then returns to the clerk.
     -- The MAIN subject clerk may also record it on the AO's behalf, but only
     -- while the letter carries no minute yet.
-    IF v_profile.role IN ('AO','ADMIN','SECRETARY','CHIEF_CLERK') THEN
+    IF v_profile.role IN ('ADMIN','SECRETARY','CHIEF_CLERK') THEN
+      v_perms := array_append(v_perms, 'add_minutes');
+    ELSIF v_profile.role = 'AO'
+          AND COALESCE(v_record.endorser_role, 'AO') = 'AO' THEN
       v_perms := array_append(v_perms, 'add_minutes');
     ELSIF v_profile.role = 'SUBJECT_CLERK'
-          AND (v_profile.is_central_clerk
-               OR v_record.department_id = v_profile.department_id) THEN
+          AND ((v_profile.is_central_clerk
+                AND COALESCE(v_record.endorser_role, 'AO') = 'AO')
+               OR (COALESCE(v_record.endorser_role, 'AO') = 'DEPARTMENT_HEAD'
+                   AND v_record.department_id = v_profile.department_id)) THEN
       IF NOT EXISTS (
         SELECT 1 FROM public.official_minutes om WHERE om.mail_record_id = p_mail_id
       ) THEN
@@ -289,6 +294,7 @@ CREATE POLICY minutes_write ON public.official_minutes FOR INSERT TO authenticat
          AND p.role = 'SUBJECT_CLERK'
          AND p.is_central_clerk = TRUE
          AND m.status::text = 'Forwarded to AO'
+         AND COALESCE(m.endorser_role, 'AO') = 'AO'
          AND NOT EXISTS (
            SELECT 1 FROM public.official_minutes om2
             WHERE om2.mail_record_id = m.id
@@ -315,6 +321,7 @@ CREATE POLICY minutes_write ON public.official_minutes FOR INSERT TO authenticat
         AND p.role = 'SUBJECT_CLERK'
         AND p.department_id = m.department_id
         AND m.status::text = 'Forwarded to AO'
+        AND COALESCE(m.endorser_role, 'AO') = 'DEPARTMENT_HEAD'
         AND NOT EXISTS (SELECT 1 FROM public.official_minutes om2 WHERE om2.mail_record_id = m.id)
         AND a.role = 'DEPARTMENT_HEAD'
         AND a.department_id = m.department_id

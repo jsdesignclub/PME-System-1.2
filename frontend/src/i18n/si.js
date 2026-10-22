@@ -120,6 +120,7 @@ export const si = Object.freeze({
   // --- Workflow states -----------------------------------------------------
   'status.Logged': 'ලියා ඇත',
   'status.Forwarded to AO': 'පරිපාලන නිලධාරී වෙත යොමු කරන ලදී',
+  'status.Forwarded to Branch Head': 'ශාඛා ප්‍රධානී වෙත යොමු කරන ලදී',
   'status.Forwarded to Subject': 'විෂයට යොදා ඉදිරිපදීම් කරන ලදී',
   'status.Assigned': 'පත් කරන ලදී',
   'status.In Progress': 'ක්‍රියාවලියේ පවතී',
@@ -578,6 +579,14 @@ export const si = Object.freeze({
   'forward.sent': 'පරිපාලන නිලධාරී වෙත යවන ලදී.',
   'forward.failed': 'එම ලිපිය AO වෙත යැවිය නොහැකි විය.',
   'forward.retry': 'මෙම ලිපිය නැවත පූරණය කරන්න',
+  'forward.branchTitle': 'ඔබගේ ශාඛා ප්‍රධානී වෙත යවන්න',
+  'forward.branchHelp':
+    'ප්‍රධාන විනිස පිණිස ලිපිය ඔබගේ ශාඛා ප්‍රධානී වෙත භාර දෙන්න. ' +
+    'ශාඛා ප්‍රධානී එය කොළේ ලියයි; ඊළඟ පියවරේදී ඔබ එය මෙහි සටහන් කරයි, ඉන්පසු ලිපිය ' +
+    'නිලධාරියෙකු පත් කිරීමට නැවත ඔබ වෙත පැමිණේ.',
+  'forward.branchSubmit': 'ශාඛා ප්‍රධානී වෙත යවන්න',
+  'forward.branchSent': 'ශාඛා ප්‍රධානී වෙත යවන ලදී.',
+  'forward.branchFailed': 'එම ලිපිය ශාඛා ප්‍රධානී වෙත යැවිය නොහැකි විය.',
 
   'rail.title': 'ක්‍රියාවලි ප්‍රගතිය',
   'rail.minutesTitle':

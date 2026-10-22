@@ -1,64 +1,138 @@
 -- ============================================================================
--- Fix: a letter that arrives straight at a BRANCH is minuted by that branch's
--- Department Head, and the branch clerk types it on the head's behalf
+-- Fix: a letter that arrives straight at a BRANCH is forwarded to that branch's
+-- Department Head, minuted by the head, and typed by the branch clerk
 -- ============================================================================
--- THE GAP
+-- THE MISTAKE THIS CORRECTS
 --
--- A branch subject clerk could already LOG a letter (mail_insert allows any
--- SUBJECT_CLERK, and the registry shows "Log letter" for them) and forward it
--- to the endorsing executive. But the minute step belonged to the ministry AO:
+-- 'Forwarded to AO' was treated as if EVERY letter at that status were waiting
+-- on the ministry Administrative Officer. A letter that a BRANCH clerk logs and
+-- carries to their own head never goes to the AO at all: the branch head writes
+-- the minute. But the status name was the only thing recording where the paper
+-- was, so:
 --
---   * `mail_available_actions` granted `add_minutes` at 'Forwarded to AO' to
---     AO / ADMIN / SECRETARY / CHIEF_CLERK, and to the MAIN (central) clerk
---     only. A BRANCH clerk and a DEPARTMENT_HEAD got nothing, so the form was
---     never offered.
---   * `minutes_write` let a clerk enter a minute on somebody else's behalf only
---     when `is_central_clerk = TRUE` and the author was an AO/Secretary/
---     CHIEF_CLERK/ADMIN. A branch clerk naming their own head was refused by
---     the policy with a 403.
+--   * the branch clerk's button said "Forward to AO";
+--   * the letter appeared in every ministry AO's queue, and an AO could minute
+--     it;
+--   * a branch clerk could not minute it for their own head at all (the previous
+--     attempt at this feature worked around that by letting them, but the step
+--     still READ as the AO's).
 --
--- So a letter logged by a branch clerk stopped at 'Forwarded to AO' with no
--- way forward: nobody who could see it could minute it.
+-- WHAT CHANGED
 --
--- WHY IT MATTERS
+-- `mail_records.endorser_role` records WHO the letter is waiting on for its
+-- minute while it sits at 'Forwarded to AO':
 --
--- A letter that is addressed to a branch is endorsed by that branch's
--- Department Head, not by the ministry AO. The head writes the minute on the
--- paper; the clerk enters what the head wrote. The minute must carry the
--- HEAD's name and role, not the clerk's.
+--   * 'AO'              - a ministry letter. The AO writes the minute; the MAIN
+--                         (central) clerk may type it for them.
+--   * 'DEPARTMENT_HEAD' - a letter that arrived at a BRANCH. That branch's head
+--                         writes the minute; the branch clerk types it.
+--   * NULL              - letters logged before the marker existed; read as 'AO'.
 --
--- THE RULE NOW
+-- The status VALUE is unchanged on purpose. Renaming the enum would rewrite the
+-- history of every letter already at that step; the marker is enough to tell the
+-- two apart, and the UI labels the step per letter ("Forwarded to Branch Head"
+-- for a branch letter). No data is rewritten except the one-time backfill below,
+-- which only fills in a marker that was previously unknown.
 --
--- `mail_available_actions`, at 'Forwarded to AO'
+-- WHO FORWARDS WHERE
 --
---   * AO / ADMIN / SECRETARY / CHIEF_CLERK - unchanged.
---   * SUBJECT_CLERK - the MAIN (central) clerk, as before, AND now any branch
---     clerk for a letter of their OWN department
---     (`v_record.department_id = v_profile.department_id`).
---   * both clerk cases keep the "no minute yet" guard, so a second clerk
---     cannot add a competing endorsement.
+-- A BEFORE trigger (`trg_set_endorser_role`) sets the marker from the acting
+-- user's profile at the moment of the forward: a non-central SUBJECT_CLERK is a
+-- branch clerk and forwards to the branch head; everyone else forwards to the
+-- AO. The client sends nothing, so the browser cannot choose the endorser.
 --
--- `minutes_write` gained a third branch, alongside "the author enters their
--- own minute" and "the central clerk enters an executive's minute":
+-- THE RULES NOW
 --
---   * recorded_by_user_id = auth.uid()  (the clerk typing it)
---   * the letter is at 'Forwarded to AO' and carries no minute yet
---   * the clerk is a SUBJECT_CLERK whose department is the letter's
---   * the named author is a DEPARTMENT_HEAD of that same department
---   * author_role and author_name are the head's real ones
+--   mail_read / mail_update   A letter whose marker is 'DEPARTMENT_HEAD' is NOT
+--                             in the AO's queue and the AO cannot write to it.
+--                             (The head and the branch clerk see it through the
+--                             department clause they already had; ADMIN /
+--                             SECRETARY / CHIEF_CLERK still see everything.)
+--   mail_available_actions    `add_minutes` at 'Forwarded to AO' goes to the AO
+--                             only for an 'AO' letter, and to a branch clerk only
+--                             for their OWN department's 'DEPARTMENT_HEAD'
+--                             letter. The "no minute yet" guard stays for both
+--                             clerk cases.
+--   minutes_write             A branch clerk may enter the minute in their own
+--                             department head's name on a 'DEPARTMENT_HEAD'
+--                             letter; the central clerk's executive case is
+--                             limited to 'AO' letters. Same author role/name
+--                             match as before.
 --
 -- A DEPARTMENT_HEAD still does not get `mail_update`, so they cannot log in and
--- enter it themselves - the branch clerk types it, exactly as the main clerk
+-- type it themselves - the branch clerk types it, exactly as the central clerk
 -- types the AO's minute. `add_minutes` is therefore still withheld from the
 -- head, so no button is offered that the server would refuse (D61).
 --
--- The body below is identical to the canonical one in supabase_schema.sql.
--- Every patch that re-creates these objects carries the same body, so the live
--- database ends up with this rule whichever of them is applied last.
+-- The objects below are identical to the canonical ones in supabase_schema.sql.
+-- Every patch that re-creates them carries the same body, so the live database
+-- ends up with these rules whichever of them is applied last.
+--
+-- Idempotent: ADD COLUMN IF NOT EXISTS, DROP POLICY IF EXISTS before each
+-- CREATE POLICY, CREATE OR REPLACE FUNCTION. Safe to re-run.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- 1. The function: which actions are offered at each status
+-- 1. The marker
+-- ----------------------------------------------------------------------------
+
+ALTER TABLE public.mail_records
+  ADD COLUMN IF NOT EXISTS endorser_role TEXT NULL;
+
+COMMENT ON COLUMN public.mail_records.endorser_role IS
+  'Who writes the minute while the letter is at Forwarded to AO: AO (or NULL) for a ministry letter, DEPARTMENT_HEAD for a letter that arrived at a branch.';
+
+-- One-time backfill for letters already sitting at that step. A letter logged by
+-- a non-central subject clerk is a branch letter; everything else is a ministry
+-- letter, which is what NULL already means, so only the branch case is written.
+UPDATE public.mail_records m
+   SET endorser_role = 'DEPARTMENT_HEAD'
+  FROM public.profiles p
+ WHERE p.id = m.created_by_user_id
+   AND p.role = 'SUBJECT_CLERK'
+   AND p.is_central_clerk IS NOT TRUE
+   AND m.endorser_role IS NULL
+   AND m.status::text = 'Forwarded to AO';
+
+-- ----------------------------------------------------------------------------
+-- 1b. Who sets the marker
+-- ----------------------------------------------------------------------------
+-- Decided from the ACTING user's profile at the moment of the forward, so the
+-- browser cannot choose the endorser (and cannot leak its own branch letter into
+-- the AO queue by sending `endorser_role = 'AO'`). BEFORE, so the row the
+-- policies and the notification trigger read is already final.
+CREATE OR REPLACE FUNCTION public.set_endorser_role()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.status::text = 'Forwarded to AO'
+     AND (TG_OP = 'INSERT' OR OLD.status::text IS DISTINCT FROM 'Forwarded to AO') THEN
+    IF EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id = auth.uid()
+        AND p.role = 'SUBJECT_CLERK'
+        AND p.is_central_clerk IS NOT TRUE
+    ) THEN
+      NEW.endorser_role := 'DEPARTMENT_HEAD';
+    ELSE
+      NEW.endorser_role := 'AO';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_set_endorser_role ON public.mail_records;
+CREATE TRIGGER trg_set_endorser_role
+BEFORE INSERT OR UPDATE ON public.mail_records
+FOR EACH ROW
+EXECUTE FUNCTION public.set_endorser_role();
+
+-- ----------------------------------------------------------------------------
+-- 2. The function: which actions are offered at each status
 -- ----------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION public.mail_available_actions(p_mail_id TEXT, p_user_id UUID)
@@ -117,15 +191,25 @@ BEGIN
     END IF;
   ELSIF v_record.status::text = 'Forwarded to AO' THEN
     -- The endorsing executive records the primary minute; the letter then
-    -- returns to the clerk. For a letter the ministry AO received that is the
-    -- AO/Secretary. For a letter that arrived straight at a BRANCH it is that
-    -- branch's Department Head, and the branch clerk types it on the head's
-    -- behalf — so a clerk may record here only for their OWN department.
-    IF v_profile.role IN ('AO','ADMIN','SECRETARY','CHIEF_CLERK') THEN
+    -- returns to the clerk. The status name is historical — the step is "with
+    -- whoever endorses this letter", and `endorser_role` says who that is:
+    --
+    --   * 'AO' (or NULL, for letters logged before the marker existed) — a
+    --     MINISTRY letter. The AO writes it (or an oversight role), and the
+    --     MAIN (central) clerk may type it on their behalf.
+    --   * 'DEPARTMENT_HEAD' — a letter that arrived straight at a BRANCH. Its
+    --     own head writes it and the branch clerk types it. The AO is not
+    --     involved and does not get the action.
+    IF v_profile.role IN ('ADMIN','SECRETARY','CHIEF_CLERK') THEN
+      v_perms := array_append(v_perms, 'add_minutes');
+    ELSIF v_profile.role = 'AO'
+          AND COALESCE(v_record.endorser_role, 'AO') = 'AO' THEN
       v_perms := array_append(v_perms, 'add_minutes');
     ELSIF v_profile.role = 'SUBJECT_CLERK'
-          AND (v_profile.is_central_clerk
-               OR v_record.department_id = v_profile.department_id) THEN
+          AND ((v_profile.is_central_clerk
+                AND COALESCE(v_record.endorser_role, 'AO') = 'AO')
+               OR (COALESCE(v_record.endorser_role, 'AO') = 'DEPARTMENT_HEAD'
+                   AND v_record.department_id = v_profile.department_id)) THEN
       -- Only allow if no minute has been added yet (by anyone) to prevent duplicates
       IF NOT EXISTS (SELECT 1 FROM public.official_minutes om WHERE om.mail_record_id = p_mail_id) THEN
         v_perms := array_append(v_perms, 'add_minutes');
@@ -194,7 +278,7 @@ END;
 $$;
 
 -- ----------------------------------------------------------------------------
--- 2. The policy: who may write a minute, and in whose name
+-- 3. The policy: who may write a minute, and in whose name
 -- ----------------------------------------------------------------------------
 
 DROP POLICY IF EXISTS minutes_write ON public.official_minutes;
@@ -202,10 +286,10 @@ DROP POLICY IF EXISTS minutes_write ON public.official_minutes;
 -- A minute is entered by its AUTHOR alone, or by a subject clerk on behalf of
 -- the person who wrote it on the physical letter:
 --
---   * the MAIN (central) clerk, for any letter, may name the AO/Secretary/
+--   * the MAIN (central) clerk, for a MINISTRY letter, may name the AO/Secretary/
 --     CHIEF_CLERK/ADMIN who endorsed it;
---   * a BRANCH clerk may name only their own department's Department Head, and
---     only for their own department's letter.
+--   * a BRANCH clerk, for a letter that arrived at their branch, may name only
+--     their own department's Department Head.
 --
 -- When recorded on behalf, author_user_id must be that endorser, author_role
 -- must match, and recorded_by_user_id must be the clerk typing it.
@@ -224,6 +308,7 @@ CREATE POLICY minutes_write ON public.official_minutes FOR INSERT TO authenticat
         AND p.role = 'SUBJECT_CLERK'
         AND p.is_central_clerk = TRUE
         AND m.status::text = 'Forwarded to AO'
+        AND COALESCE(m.endorser_role, 'AO') = 'AO'
         AND NOT EXISTS (SELECT 1 FROM public.official_minutes om2 WHERE om2.mail_record_id = m.id)
         AND a.role IN ('AO','ADMIN','SECRETARY','CHIEF_CLERK')
         -- The clerk may NAME an executive as the author, but may not rename
@@ -247,6 +332,7 @@ CREATE POLICY minutes_write ON public.official_minutes FOR INSERT TO authenticat
         AND p.role = 'SUBJECT_CLERK'
         AND p.department_id = m.department_id
         AND m.status::text = 'Forwarded to AO'
+        AND COALESCE(m.endorser_role, 'AO') = 'DEPARTMENT_HEAD'
         AND NOT EXISTS (SELECT 1 FROM public.official_minutes om2 WHERE om2.mail_record_id = m.id)
         AND a.role = 'DEPARTMENT_HEAD'
         AND a.department_id = m.department_id
@@ -258,37 +344,259 @@ CREATE POLICY minutes_write ON public.official_minutes FOR INSERT TO authenticat
   )
 );
 
+-- ----------------------------------------------------------------------------
+-- 4. The letter's own visibility and writability
+-- ----------------------------------------------------------------------------
+
+DROP POLICY IF EXISTS mail_read ON public.mail_records;
+DROP POLICY IF EXISTS mail_update ON public.mail_records;
+
+-- mail_records: read scoped by visibility; write via RLS checks
+CREATE POLICY mail_read ON public.mail_records FOR SELECT TO authenticated USING (
+  EXISTS (
+    SELECT 1 FROM public.profiles p
+    WHERE p.id = auth.uid()
+      AND (
+        -- ADMIN, SECRETARY, CHIEF_CLERK: READ_ALL_MAIL
+        p.role IN ('ADMIN','SECRETARY','CHIEF_CLERK')
+        -- AO: ONLY the letters the clerk has forwarded to THEM (their queue),
+        -- plus any letter they have already written a minute on, so that
+        -- submitting the minute does not immediately turn the page into a 404.
+        -- Plus any letter with a completion document awaiting THEIR approval.
+        --
+        -- A letter that arrived at a BRANCH is in that branch head's queue, not
+        -- the AO's: it carries endorser_role = 'DEPARTMENT_HEAD' and is left out
+        -- of the AO's queue entirely. Without this the AO would open it, and
+        -- could minute it, which is exactly the confusion the branch flow
+        -- exists to avoid.
+        OR (p.role = 'AO' AND (
+          (mail_records.status::text = 'Forwarded to AO'
+           AND COALESCE(mail_records.endorser_role, 'AO') = 'AO')
+          OR EXISTS (
+            SELECT 1 FROM public.official_minutes om
+            WHERE om.mail_record_id = mail_records.id
+              AND om.author_user_id = p.id
+          )
+          OR (mail_records.status::text = 'Pending Approval' AND EXISTS (
+            SELECT 1 FROM public.completion_submissions cs
+            WHERE cs.mail_record_id = mail_records.id
+              AND cs.status = 'Pending'
+              AND cs.approver_role = 'AO'
+          ))
+        ))
+        -- SUBJECT_CLERK: the central clerk sees everything; an ordinary clerk
+        -- sees everything they logged (any department — the intake desk routes
+        -- letters it files) + their own department + direct assignment. The
+        -- created_by clause must match mail_update/mail_delete, which already
+        -- let a clerk manage letters they logged; without it, INSERT ...
+        -- RETURNING (PostgREST's return=representation) fails the SELECT policy
+        -- for a letter routed away from the clerk's own desk.
+        OR (p.role = 'SUBJECT_CLERK' AND (
+          p.is_central_clerk
+          OR mail_records.created_by_user_id = p.id
+          OR mail_records.department_id = p.department_id
+          OR mail_records.assigned_officer_id = p.id
+        ))
+        -- DEPARTMENT_HEAD: their department's letters, plus any letter with a
+        -- Pending Approval completion document addressed to them.
+        OR (p.role = 'DEPARTMENT_HEAD' AND (
+          mail_records.department_id = p.department_id
+          OR (mail_records.status::text = 'Pending Approval' AND EXISTS (
+            SELECT 1 FROM public.completion_submissions cs
+            WHERE cs.mail_record_id = mail_records.id
+              AND cs.status = 'Pending'
+              AND cs.approver_role = 'DEPARTMENT_HEAD'
+          ))
+        ))
+        -- OFFICER/TRANSPORT_OFFICER: assigned to them only
+        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER') AND mail_records.assigned_officer_id = p.id)
+      )
+      -- Confidential is hidden from SUBJECT_CLERK/OFFICER — but NOT from the
+      -- clerk who filed the letter. The filing clerk is the one who has to
+      -- forward it, so hiding it from them strands the letter: they cannot open
+      -- it, cannot move it, and INSERT ... RETURNING refuses the row they just
+      -- created ("new row violates row-level security policy for table
+      -- mail_records"). The creator sees their own confidential letter; every
+      -- other clerk and every officer still does not.
+      AND NOT (
+        p.role IN ('SUBJECT_CLERK','OFFICER','TRANSPORT_OFFICER')
+        AND mail_records.priority = 'Confidential'
+        AND mail_records.created_by_user_id IS DISTINCT FROM p.id
+      )
+  )
+);
+
+-- Write is split per operation rather than one FOR ALL policy, so the state a
+-- caller may move FROM (USING) need not equal the state they move TO (WITH
+-- CHECK). A single FOR ALL policy reused its USING expression as the WITH CHECK
+-- and pinned SUBJECT_CLERK to one state while the workflow moved them through
+-- several, refusing every write and surfacing as a PGRST116 on the assign path.
+CREATE POLICY mail_update ON public.mail_records FOR UPDATE TO authenticated USING (
+  EXISTS (
+    SELECT 1 FROM public.profiles p
+    WHERE p.id = auth.uid()
+      AND (
+        p.role IN ('ADMIN','SECRETARY','CHIEF_CLERK')
+        -- AO: may only edit a letter while it is sitting in their queue. The
+        -- WITH CHECK below then allows the one transition out (to the clerk).
+        -- A branch letter is not in their queue (see mail_read).
+        OR (p.role = 'AO'
+            AND mail_records.status = 'Forwarded to AO'
+            AND COALESCE(mail_records.endorser_role, 'AO') = 'AO')
+        -- SUBJECT_CLERK owns intake and routing: forward to the AO, record the
+        -- AO's minutes, then assign. The central clerk handles any department;
+        -- an ordinary clerk any letter in their department or one they logged,
+        -- while it is with the clerk (Logged / Forwarded to AO / Forwarded to
+        -- Subject).
+        OR (p.role = 'SUBJECT_CLERK'
+            AND (p.is_central_clerk
+                 OR mail_records.department_id = p.department_id
+                 OR mail_records.created_by_user_id = p.id
+                 OR mail_records.assigned_officer_id = p.id)
+            AND mail_records.status IN ('Logged','Forwarded to AO','Forwarded to Subject'))
+        -- The assigned officer/clerk starts (Assigned -> In Progress).
+        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER','SUBJECT_CLERK')
+            AND mail_records.assigned_officer_id = p.id
+            AND mail_records.status IN ('Assigned','In Progress'))
+      )
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.profiles p
+    WHERE p.id = auth.uid()
+      AND (
+        p.role IN ('ADMIN','SECRETARY','CHIEF_CLERK')
+        -- AO: the new row may only sit at their queue or at the clerk's, i.e.
+        -- the AO recorded a minute and handed the paper back.
+        OR (p.role = 'AO'
+            AND mail_records.status IN ('Forwarded to AO','Forwarded to Subject')
+            AND COALESCE(mail_records.endorser_role, 'AO') = 'AO')
+        OR (p.role = 'SUBJECT_CLERK'
+            AND (p.is_central_clerk
+                 OR mail_records.department_id = p.department_id
+                 OR mail_records.created_by_user_id = p.id
+                 OR mail_records.assigned_officer_id = p.id))
+        OR (p.role IN ('OFFICER','TRANSPORT_OFFICER','SUBJECT_CLERK')
+            AND mail_records.assigned_officer_id = p.id)
+      )
+  )
+);
+
+-- ----------------------------------------------------------------------------
+-- 4b. Notifications: tell the queue the letter is actually in
+-- ----------------------------------------------------------------------------
+-- The old body told every active AO about every forward. A branch letter is not
+-- in their queue, so the branch head is told instead. Same notification type:
+-- "a letter is waiting in your queue" is true of either desk.
+CREATE OR REPLACE FUNCTION public.notify_on_mail_change()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_actor   UUID := auth.uid();
+  v_nil     UUID := '00000000-0000-0000-0000-000000000000'::UUID;
+  v_payload JSONB;
+BEGIN
+  v_payload := jsonb_build_object(
+    'ref',      NEW.day_stamp_no,
+    'subject',  NEW.subject,
+    'letterId', NEW.id
+  );
+
+  IF NEW.assigned_officer_id IS DISTINCT FROM OLD.assigned_officer_id
+     AND NEW.assigned_officer_id IS NOT NULL
+     AND NEW.assigned_officer_id <> COALESCE(v_actor, v_nil) THEN
+    PERFORM public.push_notification(NEW.assigned_officer_id, 'assigned', NEW.id, v_payload);
+  END IF;
+
+  IF NEW.status IS DISTINCT FROM OLD.status THEN
+    IF NEW.status::text = 'Forwarded to AO' THEN
+      IF COALESCE(NEW.endorser_role, 'AO') = 'DEPARTMENT_HEAD' THEN
+        PERFORM public.push_notification(h.id, 'forwarded_to_ao', NEW.id, v_payload)
+          FROM public.profiles h
+         WHERE h.role = 'DEPARTMENT_HEAD'
+           AND h.department_id = NEW.department_id
+           AND h.is_active
+           AND h.id <> COALESCE(v_actor, v_nil);
+      ELSE
+        PERFORM public.push_notification(p.id, 'forwarded_to_ao', NEW.id, v_payload)
+          FROM public.profiles p
+         WHERE p.role = 'AO'
+           AND p.is_active
+           AND p.id <> COALESCE(v_actor, v_nil);
+      END IF;
+
+    ELSIF NEW.status::text = 'Forwarded to Subject' THEN
+      -- The letter came back from the endorser, so the clerk who logged it is
+      -- told to carry on routing it. A clerk who recorded the minute ON BEHALF
+      -- of the endorser has just done that step themselves: telling them the
+      -- letter "came back" would be news about their own act. `recorded_by_user_id`
+      -- is set only on a delegated minute, so an endorser recording their own
+      -- still notifies the clerk.
+      IF NEW.created_by_user_id IS NOT NULL
+         AND NEW.created_by_user_id <> COALESCE(v_actor, v_nil)
+         AND NOT EXISTS (
+           SELECT 1 FROM public.official_minutes om
+           WHERE om.mail_record_id = NEW.id
+             AND om.recorded_by_user_id = v_actor
+         ) THEN
+        PERFORM public.push_notification(NEW.created_by_user_id, 'returned', NEW.id, v_payload);
+      END IF;
+
+    ELSIF NEW.status::text = 'Completed' THEN
+      IF NEW.created_by_user_id IS NOT NULL
+         AND NEW.created_by_user_id <> COALESCE(v_actor, v_nil) THEN
+        PERFORM public.push_notification(NEW.created_by_user_id, 'completed', NEW.id, v_payload);
+      END IF;
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
 -- ============================================================================
--- 3. Read-only checks
+-- 5. Read-only checks
 -- ============================================================================
 -- Every statement below only reads. None of them changes a row.
 
--- 3a. The branch rule is in the live function body, and the policy carries the
---     branch clause.
+-- 5a. The marker exists, and the policies carry the branch rule.
 SELECT
-  position('v_record.department_id = v_profile.department_id'
+  EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'mail_records'
+      AND column_name = 'endorser_role'
+  ) AS marker_column_present,
+  position('v_record.endorser_role'
            IN pg_get_functiondef('public.mail_available_actions'::regproc)) > 0
-    AS branch_clerk_action_rule_present,
-  (SELECT position('a.role = ''DEPARTMENT_HEAD''' IN with_check)
+    AS branch_action_rule_present,
+  (SELECT position('endorser_role' IN with_check) > 0
      FROM pg_policies
-    WHERE schemaname = 'public'
-      AND tablename = 'official_minutes'
-      AND policyname = 'minutes_write') > 0
-    AS branch_head_policy_present;
+    WHERE schemaname = 'public' AND tablename = 'mail_records'
+      AND policyname = 'mail_read') AS mail_read_rule_present,
+  EXISTS (SELECT 1 FROM pg_trigger
+           WHERE tgname = 'trg_set_endorser_role' AND NOT tgisinternal)
+    AS marker_trigger_present,
+  position('endorser_role'
+           IN pg_get_functiondef('public.notify_on_mail_change'::regproc)) > 0
+    AS branch_notify_rule_present;
 
--- 3b. The letters waiting at 'Forwarded to AO', with the department they
---     belong to, whether a minute already exists, and the branch head who is
---     expected to endorse them. `head_name` NULL means the department has no
---     active DEPARTMENT_HEAD - the clerk would have nobody to name, so the fix
---     is to give that branch a head (Admin -> Users).
+-- 5b. Letters at the minute step, with the executive they are waiting on. A
+--     branch letter shows head_name = the Department Head of its department;
+--     a NULL there means the branch has no active head, and its clerk would
+--     have nobody to name (Admin -> Users fixes that).
 SELECT
   m.day_stamp_no,
   m.subject,
   d.name AS department,
-  m.status::text AS status,
+  COALESCE(m.endorser_role, 'AO') AS endorser_role,
   EXISTS (SELECT 1 FROM public.official_minutes om WHERE om.mail_record_id = m.id)
     AS has_minute,
-  h.full_name AS head_name
+  COALESCE(h.full_name, ao.full_name) AS endorser_name
 FROM public.mail_records m
 LEFT JOIN public.departments d ON d.id = m.department_id
 LEFT JOIN LATERAL (
@@ -300,11 +608,19 @@ LEFT JOIN LATERAL (
   ORDER BY p.full_name
   LIMIT 1
 ) h ON TRUE
+LEFT JOIN LATERAL (
+  SELECT p.full_name
+  FROM public.profiles p
+  WHERE p.role = 'AO'
+    AND p.is_active
+  ORDER BY p.full_name
+  LIMIT 1
+) ao ON TRUE
 WHERE m.status::text = 'Forwarded to AO'
 ORDER BY m.receipt_date DESC;
 
--- 3c. Every department and the head a branch clerk could name. A blank
---     `head_name` is the one thing this feature cannot work without.
+-- 5c. Every department and the head a branch clerk could name. A blank
+--     head_name is the one thing the branch flow cannot work without.
 SELECT
   d.name AS department,
   h.full_name AS head_name,
@@ -320,8 +636,9 @@ LEFT JOIN LATERAL (
 ) h ON TRUE
 ORDER BY d.name;
 
--- 3d. Who may minute one letter. Put a real letter id and a branch clerk's uuid
---     in the two places, and both of those people must show 'add_minutes'.
+-- 5d. Who may minute one letter. Put a real letter id and the two uuids in the
+--     three places; for a BRANCH letter the branch clerk must show
+--     'add_minutes' and the ministry AO must NOT.
 --
 --     SELECT
 --       p.full_name,
@@ -332,8 +649,9 @@ ORDER BY d.name;
 --     FROM public.profiles p
 --     CROSS JOIN public.mail_records m
 --     WHERE m.id = '<letter-id>'
---       AND p.id IN ('<branch-clerk-uuid>', '<branch-head-uuid>')
+--       AND p.id IN ('<branch-clerk-uuid>', '<branch-head-uuid>', '<ao-uuid>')
 --     ORDER BY p.role, p.full_name;
 --
---     The clerk must show 'add_minutes'. The head must NOT - they do not type
---     it themselves, and the form must not offer what the policy would refuse.
+--     The branch clerk must show 'add_minutes'. The head must NOT - they do not
+--     type it themselves, and the form must not offer what the policy would
+--     refuse. The AO must NOT, because the letter is not in their queue.

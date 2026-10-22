@@ -163,7 +163,7 @@ export default function MailDetailPage() {
           </Link>
           <h1 className="mt-1 flex flex-wrap items-center gap-3 text-2xl font-semibold text-ink">
             <span className="font-mono">{mail.day_stamp_no}</span>
-            <StatusBadge status={mail.status} />
+            <StatusBadge status={mail.status} endorserRole={mail.endorser_role} />
             <PriorityBadge priority={mail.priority} />
           </h1>
           <p className="mt-1 text-slate-700">{mail.subject}</p>
@@ -176,6 +176,7 @@ export default function MailDetailPage() {
         status={status}
         hasMinutes={minutes.length > 0}
         availableActions={actions}
+        endorserRole={mail.endorser_role}
       />
 
       {completionDue && status !== 'Completed' && (
