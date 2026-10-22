@@ -84,6 +84,30 @@ CREATE POLICY minutes_write ON public.official_minutes FOR INSERT TO authenticat
          AND a.full_name = official_minutes.author_name
     )
   )
+  -- OR a BRANCH subject clerk enters it on behalf of their OWN branch head.
+  -- A letter that arrives straight at a branch is endorsed by that branch's
+  -- Department Head, not by the ministry AO: the branch clerk types what the
+  -- head wrote on the paper, and the minute carries the head's name.
+  OR (
+    recorded_by_user_id = auth.uid()
+    AND author_user_id IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM public.mail_records m
+      JOIN public.profiles p ON p.id = auth.uid()
+      JOIN public.profiles a ON a.id = official_minutes.author_user_id
+      WHERE m.id = official_minutes.mail_record_id
+        AND p.role = 'SUBJECT_CLERK'
+        AND p.department_id = m.department_id
+        AND m.status::text = 'Forwarded to AO'
+        AND NOT EXISTS (SELECT 1 FROM public.official_minutes om2 WHERE om2.mail_record_id = m.id)
+        AND a.role = 'DEPARTMENT_HEAD'
+        AND a.department_id = m.department_id
+        -- Same rule as above: the clerk may NAME the author, but may not
+        -- rename them. The displayed role and name must be the real ones.
+        AND a.role::text = official_minutes.author_role
+        AND a.full_name = official_minutes.author_name
+    )
+  )
 );
 
 
@@ -148,7 +172,9 @@ BEGIN
     -- when the AO has not yet added one.
     IF v_profile.role IN ('AO','ADMIN','SECRETARY','CHIEF_CLERK') THEN
       v_perms := array_append(v_perms, 'add_minutes');
-    ELSIF v_profile.role = 'SUBJECT_CLERK' AND v_profile.is_central_clerk THEN
+    ELSIF v_profile.role = 'SUBJECT_CLERK'
+          AND (v_profile.is_central_clerk
+               OR v_record.department_id = v_profile.department_id) THEN
       -- Only while the letter carries NO minute: once the AO has recorded
       -- theirs, the clerk must not add a competing endorsement.
       IF NOT EXISTS (

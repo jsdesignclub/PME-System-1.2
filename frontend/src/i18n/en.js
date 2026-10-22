@@ -847,6 +847,17 @@ export const en = Object.freeze({
   'minutes.onBehalfHint':
     'The minute is recorded in the selected person\'s name. You are named as the clerk who entered it.',
   'minutes.onBehalfNoAuthors': 'No active AO or Secretary to name',
+  // A BRANCH subject clerk recording the minute written by their own
+  // Department Head, because the letter arrived straight at that branch.
+  'minutes.formTitleBranchHead': 'Record the branch head\'s minutes and forward',
+  'minutes.formHintBranchHead':
+    'Your branch head has not recorded a minute on this letter yet. ' +
+    'Enter what they wrote on the physical letter — the minute is recorded in their name, ' +
+    'with you named as the clerk who entered it.',
+  'minutes.onBehalfHintBranchHead':
+    'The minute is recorded in your branch head\'s name. You are named as the clerk who entered it.',
+  'minutes.onBehalfNoAuthorsBranchHead': 'No Department Head is recorded for this branch',
+  'minutes.quickNotePlaceholderBranchHead': 'e.g. Minuted from the branch head\'s handwritten note on the original letter',
   'minutes.quickNote': 'Quick note (optional)',
   'minutes.quickNotePlaceholder': 'e.g. Minuted from the AO\'s handwritten note on the original letter',
   'minutes.quickNoteHint': 'For the file — shown with the minute.',

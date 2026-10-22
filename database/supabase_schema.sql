@@ -359,12 +359,16 @@ BEGIN
       v_perms := array_append(v_perms, 'delete');
     END IF;
   ELSIF v_record.status::text = 'Forwarded to AO' THEN
-    -- The AO records the primary minute; the letter then returns to the clerk.
-    -- The main (central) subject clerk may also record the minute on behalf of
-    -- the AO/Secretary when the AO has not yet added a minute.
+    -- The endorsing executive records the primary minute; the letter then
+    -- returns to the clerk. For a letter the ministry AO received that is the
+    -- AO/Secretary. For a letter that arrived straight at a BRANCH it is that
+    -- branch's Department Head, and the branch clerk types it on the head's
+    -- behalf — so a clerk may record here only for their OWN department.
     IF v_profile.role IN ('AO','ADMIN','SECRETARY','CHIEF_CLERK') THEN
       v_perms := array_append(v_perms, 'add_minutes');
-    ELSIF v_profile.role = 'SUBJECT_CLERK' AND v_profile.is_central_clerk THEN
+    ELSIF v_profile.role = 'SUBJECT_CLERK'
+          AND (v_profile.is_central_clerk
+               OR v_record.department_id = v_profile.department_id) THEN
       -- Only allow if no minute has been added yet (by anyone) to prevent duplicates
       IF NOT EXISTS (SELECT 1 FROM public.official_minutes om WHERE om.mail_record_id = p_mail_id) THEN
         v_perms := array_append(v_perms, 'add_minutes');
@@ -1012,10 +1016,16 @@ CREATE POLICY mail_delete ON public.mail_records FOR DELETE TO authenticated USI
 -- official_minutes
 CREATE POLICY minutes_read ON public.official_minutes FOR SELECT TO authenticated USING (true);
 
--- A minute is entered by its AUTHOR alone, or by the main (central) subject
--- clerk on behalf of the AO/Secretary who wrote it on the physical letter.
--- When recorded on behalf, author_user_id must be the AO/Secretary who wrote
--- it, author_role must match, and recorded_by_user_id must be the clerk typing it.
+-- A minute is entered by its AUTHOR alone, or by a subject clerk on behalf of
+-- the person who wrote it on the physical letter:
+--
+--   * the MAIN (central) clerk, for any letter, may name the AO/Secretary/
+--     CHIEF_CLERK/ADMIN who endorsed it;
+--   * a BRANCH clerk may name only their own department's Department Head, and
+--     only for their own department's letter.
+--
+-- When recorded on behalf, author_user_id must be that endorser, author_role
+-- must match, and recorded_by_user_id must be the clerk typing it.
 CREATE POLICY minutes_write ON public.official_minutes FOR INSERT TO authenticated WITH CHECK (
   -- The author enters their own minute.
   auth.uid() = author_user_id
@@ -1035,6 +1045,30 @@ CREATE POLICY minutes_write ON public.official_minutes FOR INSERT TO authenticat
         AND a.role IN ('AO','ADMIN','SECRETARY','CHIEF_CLERK')
         -- The clerk may NAME an executive as the author, but may not rename
         -- them: the displayed role and name must be that person's real ones.
+        AND a.role::text = official_minutes.author_role
+        AND a.full_name = official_minutes.author_name
+    )
+  )
+  -- OR a BRANCH subject clerk enters it on behalf of their OWN branch head.
+  -- A letter that arrives straight at a branch is endorsed by that branch's
+  -- Department Head, not by the ministry AO: the branch clerk types what the
+  -- head wrote on the paper, and the minute carries the head's name.
+  OR (
+    recorded_by_user_id = auth.uid()
+    AND author_user_id IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM public.mail_records m
+      JOIN public.profiles p ON p.id = auth.uid()
+      JOIN public.profiles a ON a.id = official_minutes.author_user_id
+      WHERE m.id = official_minutes.mail_record_id
+        AND p.role = 'SUBJECT_CLERK'
+        AND p.department_id = m.department_id
+        AND m.status::text = 'Forwarded to AO'
+        AND NOT EXISTS (SELECT 1 FROM public.official_minutes om2 WHERE om2.mail_record_id = m.id)
+        AND a.role = 'DEPARTMENT_HEAD'
+        AND a.department_id = m.department_id
+        -- Same rule as above: the clerk may NAME the author, but may not
+        -- rename them. The displayed role and name must be the real ones.
         AND a.role::text = official_minutes.author_role
         AND a.full_name = official_minutes.author_name
     )

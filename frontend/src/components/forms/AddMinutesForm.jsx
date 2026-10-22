@@ -23,9 +23,19 @@
  * endorsement moves the status will be surprised by it exactly once, and that
  * surprise is worth one sentence of explanation.
  *
- * Main subject clerk: when recording on behalf of the AO/Secretary who wrote
- * the minute on the physical letter, they select the AO/Secretary, provide a
- * quick note, and the minute is attributed to that person with recorded_by_user_id set.
+ * Recording on behalf. A minute on the physical letter is written by the
+ * ENDORSING executive, and a clerk types it. Which executive depends on where
+ * the letter went:
+ *
+ *   * the MAIN (central) clerk, for a ministry letter: the AO/Secretary (or a
+ *     Chief Clerk/Admin) who wrote it;
+ *   * a BRANCH clerk, for a letter that arrived straight at their branch: their
+ *     own Department Head — the branch endorses its own mail, not the AO.
+ *
+ * In both cases the clerk selects the author, may add a quick note, and the
+ * minute is recorded in that person's name with recorded_by_user_id set to the
+ * clerk. Who may be named is the server's rule (`minutes_write`); this form
+ * only fetches the right shortlist.
  */
 import { useEffect, useState } from 'react';
 
@@ -61,8 +71,13 @@ export function AddMinutesForm({ letterId, departmentId: currentDepartmentId, on
   const [selectedAuthorId, setSelectedAuthorId] = useState('');
   const [quickNote, setQuickNote] = useState('');
 
+  // A subject clerk at the minute step types what the endorsing executive wrote
+  // on the paper. The MAIN (central) clerk names the AO/Secretary; a BRANCH
+  // clerk names their own Department Head. Both are "on behalf" of somebody
+  // else, so both get the author picker — only the list differs.
   const canRecordOnBehalf =
-    user?.role === 'SUBJECT_CLERK' && user?.is_central_clerk && letterStatus === 'Forwarded to AO';
+    user?.role === 'SUBJECT_CLERK' && letterStatus === 'Forwarded to AO';
+  const branchHeadMode = canRecordOnBehalf && !user?.is_central_clerk;
 
   useEffect(() => {
     let live = true;
@@ -83,11 +98,11 @@ export function AddMinutesForm({ letterId, departmentId: currentDepartmentId, on
     if (!canRecordOnBehalf) return undefined;
     let live = true;
     mailApi
-      .minuteAuthors()
+      .minuteAuthors({ branchHead: branchHeadMode, departmentId: currentDepartmentId })
       .then((rows) => {
         if (!live) return;
         setAoOptions(rows);
-        setSelectedAuthorId((current) => current || rows[0]?.id || '');
+        setSelectedAuthorId(rows[0]?.id || '');
       })
       .catch(() => {
         if (live) setAoOptions([]);
@@ -95,9 +110,29 @@ export function AddMinutesForm({ letterId, departmentId: currentDepartmentId, on
     return () => {
       live = false;
     };
-  }, [canRecordOnBehalf]);
+  }, [canRecordOnBehalf, branchHeadMode, currentDepartmentId]);
 
   const over = text.length > SOFT_LIMIT;
+
+  // The panel says whose minute it is, because the letter says so: a branch
+  // letter is endorsed by the branch head, a ministry letter by the AO.
+  const titleKey = branchHeadMode
+    ? 'minutes.formTitleBranchHead'
+    : canRecordOnBehalf
+      ? 'minutes.formTitleOnBehalf'
+      : 'minutes.formTitle';
+  const hintKey = branchHeadMode
+    ? 'minutes.formHintBranchHead'
+    : canRecordOnBehalf
+      ? 'minutes.formHintOnBehalf'
+      : 'minutes.formHint';
+  const authorHintKey = branchHeadMode ? 'minutes.onBehalfHintBranchHead' : 'minutes.onBehalfHint';
+  const noAuthorsKey = branchHeadMode
+    ? 'minutes.onBehalfNoAuthorsBranchHead'
+    : 'minutes.onBehalfNoAuthors';
+  const quickNotePlaceholderKey = branchHeadMode
+    ? 'minutes.quickNotePlaceholderBranchHead'
+    : 'minutes.quickNotePlaceholder';
 
   const needsDepartment = !currentDepartmentId;
   const canSubmit =
@@ -138,14 +173,12 @@ export function AddMinutesForm({ letterId, departmentId: currentDepartmentId, on
     <section className="no-print rounded-lg border border-slate-200 bg-surface shadow-sm">
       <header className="border-b border-slate-200 px-5 py-3">
         <h2 className="text-sm font-semibold tracking-wide text-ink uppercase">
-          {canRecordOnBehalf ? t('minutes.formTitleOnBehalf') : t('minutes.formTitle')}
+          {t(titleKey)}
         </h2>
       </header>
 
       <div className="space-y-3 p-5">
-        <p className="text-sm text-slate-600">
-          {canRecordOnBehalf ? t('minutes.formHintOnBehalf') : t('minutes.formHint')}
-        </p>
+        <p className="text-sm text-slate-600">{t(hintKey)}</p>
 
         <div>
           <label className="block text-sm">
@@ -190,7 +223,7 @@ export function AddMinutesForm({ letterId, departmentId: currentDepartmentId, on
                 aria-label={t('minutes.onBehalfAuthor')}
                 className="mt-1 w-full rounded-btn border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none"
               >
-                {aoOptions.length === 0 && <option value="">{t('minutes.onBehalfNoAuthors')}</option>}
+                {aoOptions.length === 0 && <option value="">{t(noAuthorsKey)}</option>}
                 {aoOptions.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.full_name} · {String(a.role).replaceAll('_', ' ')}
@@ -198,7 +231,7 @@ export function AddMinutesForm({ letterId, departmentId: currentDepartmentId, on
                 ))}
               </select>
             </label>
-            <p className="mt-0.5 text-xs text-slate-500">{t('minutes.onBehalfHint')}</p>
+            <p className="mt-0.5 text-xs text-slate-500">{t(authorHintKey)}</p>
           </div>
         )}
 
@@ -251,7 +284,7 @@ export function AddMinutesForm({ letterId, departmentId: currentDepartmentId, on
             <input
               value={quickNote}
               onChange={(event) => setQuickNote(event.target.value)}
-              placeholder={t('minutes.quickNotePlaceholder')}
+              placeholder={t(quickNotePlaceholderKey)}
               aria-label={t('minutes.quickNote')}
               className="mt-1 w-full rounded-btn border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none"
             />

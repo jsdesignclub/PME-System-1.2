@@ -186,26 +186,45 @@ export async function officers({ limit = 100, departmentId, includeClerks = fals
 }
 
 /**
- * The executives who may be named as the author of a minute.
+ * The people who may be named as the author of a minute.
  *
- * A minute on a physical letter is written by an AO (or the Secretary), so when
- * the main subject clerk enters it on their behalf they must say WHICH one
- * wrote it. `mail_records` has no `assigned_ao_id` — the AO queue is shared by
- * every active AO — so there is no server-side pointer to read the author off;
- * the clerk has to name them, and the list of possible names has to come from
- * somewhere.
+ * A minute on a physical letter is written by the endorsing executive, so a
+ * clerk entering it on their behalf must say WHICH one wrote it. `mail_records`
+ * has no author pointer — the AO queue is shared by every active AO — so there
+ * is no server-side field to read the author off; the clerk has to name them,
+ * and the list of possible names has to come from somewhere.
+ *
+ * Two lists, because there are two kinds of letter:
+ *
+ *   * `branchHead: false` — the ministry letter. The endorser is an AO, the
+ *     Secretary, a Chief Clerk or an Admin, and any of them may be named on any
+ *     letter. This is the main (central) clerk's list.
+ *   * `branchHead: true` — a letter that arrived straight at a branch. Its
+ *     endorser is THAT branch's Department Head, so the list is that one
+ *     person's role inside `departmentId`. A department with no active head
+ *     yields an empty list; the form says so rather than offering nobody.
  *
  * `profiles_read` is open to every signed-in user, so this needs no permission
  * of its own. The role filter is applied HERE rather than by the client, so the
- * dropdown holds executives and nobody else.
+ * dropdown holds endorsers and nobody else. Which of them the caller may
+ * actually name is `minutes_write`'s decision, not this function's.
  */
-export async function minuteAuthors() {
-  const { data, error } = await supabase
+export async function minuteAuthors({ branchHead = false, departmentId } = {}) {
+  let query = supabase
     .from('profiles')
     .select('id, full_name, role, designation, section_name, is_active')
-    .in('role', ['AO', 'SECRETARY', 'CHIEF_CLERK', 'ADMIN'])
     .eq('is_active', true)
     .order('full_name');
+
+  if (branchHead) {
+    // Without a department there is no branch to have a head.
+    if (!departmentId) return [];
+    query = query.eq('role', 'DEPARTMENT_HEAD').eq('department_id', departmentId);
+  } else {
+    query = query.in('role', ['AO', 'SECRETARY', 'CHIEF_CLERK', 'ADMIN']);
+  }
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
@@ -323,17 +342,21 @@ export async function addMinutes(
   const profile = await fetchProfile(user.id);
   if (!profile) throw new Error('User profile not found');
 
-  const isCentralClerkRecordingOnBehalf =
+  // A clerk may type what somebody else wrote on the paper: the main (central)
+  // clerk for an AO/Secretary, a branch clerk for their own Department Head.
+  // WHICH authors a clerk may name is `minutes_write`'s rule and is enforced
+  // there; this side only reports the person the clerk picked, so the rule is
+  // not duplicated here and cannot drift from the database's.
+  const isClerkRecordingOnBehalf =
     profile.role === 'SUBJECT_CLERK' &&
-    profile.is_central_clerk &&
     author_user_id &&
     author_user_id !== user.id;
 
   const insertPayload = {
     mail_record_id: id,
-    author_user_id: isCentralClerkRecordingOnBehalf ? author_user_id : user.id,
-    author_role: isCentralClerkRecordingOnBehalf ? author_role || profile.role : profile.role,
-    author_name: isCentralClerkRecordingOnBehalf ? author_name || profile.full_name : profile.full_name,
+    author_user_id: isClerkRecordingOnBehalf ? author_user_id : user.id,
+    author_role: isClerkRecordingOnBehalf ? author_role || profile.role : profile.role,
+    author_name: isClerkRecordingOnBehalf ? author_name || profile.full_name : profile.full_name,
     instruction_type,
     minutes_text,
   };
@@ -346,7 +369,7 @@ export async function addMinutes(
     insertPayload.quick_note = quick_note.trim();
   }
 
-  if (isCentralClerkRecordingOnBehalf) {
+  if (isClerkRecordingOnBehalf) {
     insertPayload.recorded_by_user_id = user.id;
   }
 
