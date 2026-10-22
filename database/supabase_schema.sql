@@ -376,13 +376,38 @@ BEGIN
       v_perms := array_append(v_perms, 'assign');
     END IF;
   ELSIF v_record.status::text = 'Assigned' THEN
-    IF 'UPDATE_ACTION_STATUS' = ANY(v_perms) THEN
+    -- `start` belongs to the person the letter is ASSIGNED TO, and to nobody
+    -- else.
+    --
+    -- The clerk who routed the letter to an officer is not that person:
+    -- starting the work is the officer's duty, and the clerk's business with
+    -- the letter from here on is to watch it. A clerk who took the letter for
+    -- themselves — self-assign, or a letter routed to their own desk — IS the
+    -- assignee, so they still get the button.
+    --
+    -- `mail_update` has always said this: the Assigned -> In Progress move
+    -- requires `assigned_officer_id = p.id`. Offering `start` to anybody else
+    -- showed a button the server refuses with a 403 — the failure D61 exists
+    -- to prevent.
+    --
+    -- ADMIN / SECRETARY / CHIEF_CLERK keep the reach they have in `mail_update`,
+    -- where they may write to any letter: an oversight role must be able to
+    -- take a stalled letter in hand.
+    IF 'UPDATE_ACTION_STATUS' = ANY(v_perms)
+       AND (v_record.assigned_officer_id = p_user_id
+            OR v_profile.role IN ('ADMIN','SECRETARY','CHIEF_CLERK')) THEN
       v_perms := array_append(v_perms, 'start');
     END IF;
   ELSIF v_record.status::text = 'In Progress' THEN
     -- The officer no longer completes directly: they forward a completion
     -- document, which the AO or Secretary must approve.
-    IF 'UPDATE_ACTION_STATUS' = ANY(v_perms) THEN
+    --
+    -- The completion document is the assignee's to forward, and only the
+    -- assignee's: `submit_completion` refuses anybody else by name ("Only the
+    -- assigned officer may forward a completion document."). So there is no
+    -- oversight override here, unlike `start` above.
+    IF 'UPDATE_ACTION_STATUS' = ANY(v_perms)
+       AND v_record.assigned_officer_id = p_user_id THEN
       v_perms := array_append(v_perms, 'submit_completion');
     END IF;
   ELSIF v_record.status::text = 'Pending Approval' THEN
