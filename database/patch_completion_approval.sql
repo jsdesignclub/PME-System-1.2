@@ -157,8 +157,16 @@ BEGIN
       v_perms := array_append(v_perms, 'delete');
     END IF;
   ELSIF v_record.status::text = 'Forwarded to AO' THEN
+    -- The MAIN subject clerk may also record the minute on the AO's behalf,
+    -- but only while the letter carries no minute yet.
     IF v_profile.role IN ('AO','ADMIN','SECRETARY','CHIEF_CLERK') THEN
       v_perms := array_append(v_perms, 'add_minutes');
+    ELSIF v_profile.role = 'SUBJECT_CLERK' AND v_profile.is_central_clerk THEN
+      IF NOT EXISTS (
+        SELECT 1 FROM public.official_minutes om WHERE om.mail_record_id = p_mail_id
+      ) THEN
+        v_perms := array_append(v_perms, 'add_minutes');
+      END IF;
     END IF;
   ELSIF v_record.status::text = 'Forwarded to Subject' THEN
     IF v_profile.role IN ('SUBJECT_CLERK','ADMIN','SECRETARY','CHIEF_CLERK') THEN
@@ -245,7 +253,18 @@ CREATE POLICY mail_read ON public.mail_records FOR SELECT TO authenticated USING
         ))
         OR (p.role IN ('OFFICER','TRANSPORT_OFFICER') AND mail_records.assigned_officer_id = p.id)
       )
-      AND NOT (p.role IN ('SUBJECT_CLERK','OFFICER','TRANSPORT_OFFICER') AND mail_records.priority = 'Confidential')
+      -- Confidential is hidden from SUBJECT_CLERK/OFFICER — but NOT from the
+      -- clerk who filed the letter. The filing clerk is the one who has to
+      -- forward it to the AO, so hiding it from them strands the letter: they
+      -- cannot open it, cannot move it, and INSERT ... RETURNING refuses the
+      -- row they just created ("new row violates row-level security policy for
+      -- table mail_records"). The creator sees their own confidential letter;
+      -- every other clerk and every officer still does not.
+      AND NOT (
+        p.role IN ('SUBJECT_CLERK','OFFICER','TRANSPORT_OFFICER')
+        AND mail_records.priority = 'Confidential'
+        AND mail_records.created_by_user_id IS DISTINCT FROM p.id
+      )
   )
 );
 

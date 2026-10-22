@@ -11,15 +11,24 @@ export function normaliseError(error, fallback = 'Cannot reach the server.') {
   // validation problem, whichever layer produced it.
   const refusedByRls = code === '42501' || /row-level security/i.test(message);
 
+  // Supabase Storage reports its failures with `errorCode`/`statusCode`, not
+  // PostgREST's `code`. So a refusal by the bucket's policies arrives as
+  // status 400 with the message "new row violates row-level security policy" —
+  // which the table below would file as a *validation* error and answer with
+  // "Correct the highlighted field", there being no field. It is not the
+  // caller's permission that is missing; the bucket has no INSERT policy.
+  const fromStorage = Boolean(error?.errorCode || error?.statusCode);
+
   let kind;
   if (refusedByRls) {
-    kind = 'forbidden';
+    kind = fromStorage ? 'storage-refused' : 'forbidden';
   } else if (typeof status === 'number') {
     if (status === 401) kind = 'unauthenticated';
     else if (status === 403) kind = 'forbidden';
     else if (status === 404) kind = 'not-found';
     else if (status === 409) kind = 'conflict';
     else if (status === 422 || status === 400) kind = 'validation';
+    else if (status === 415) kind = 'unsupported-file';
     else if (status >= 500) kind = 'server';
     else kind = 'unknown';
   } else if (code === 'PGRST116') {

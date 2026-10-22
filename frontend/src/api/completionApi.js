@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient.js';
+import { mimeTypeFor, withCanonicalType } from '../utils/fileTypes.js';
 
 /**
  * The completion-document approval workflow.
@@ -33,7 +34,14 @@ export async function submit(mailId, { approverRole, note, file }) {
   if (!user) throw new Error('Not authenticated');
 
   const path = `${mailId}/completion-${crypto.randomUUID()}-${file.name}`;
-  const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, file);
+  // The Content-Type is stated explicitly, from the file's extension, for the
+  // same reason ordinary scans do it: the operating system's guess at a file's
+  // type differs from desk to desk, and the bucket's mime allowlist refuses
+  // anything it does not recognise.
+  const contentType = mimeTypeFor(file);
+  const { error: uploadError } = await supabase.storage
+    .from(BUCKET)
+    .upload(path, withCanonicalType(file), { contentType });
   if (uploadError) throw uploadError;
 
   const { data, error } = await supabase.rpc('submit_completion', {
@@ -41,7 +49,7 @@ export async function submit(mailId, { approverRole, note, file }) {
     p_approver_role: approverRole,
     p_document_name: file.name,
     p_document_path: path,
-    p_mime_type: file.type,
+    p_mime_type: contentType,
     p_size_bytes: file.size,
     p_note: note?.trim() ? note.trim() : null,
   });

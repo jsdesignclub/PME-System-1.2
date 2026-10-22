@@ -5,8 +5,9 @@
  *
  *     SUBJECT_CLERK logs the letter            (Logged)
  *       -> forwards the paper to the AO         (Forwarded to AO)
- *       -> AO handwrites the primary minute;
- *          the clerk types it                     (Forwarded to Subject)
+ *       -> the AO handwrites the primary minute on the paper;
+ *          the AO — or the MAIN subject clerk, on the AO's behalf —
+ *          types it into the system              (Forwarded to Subject)
  *       -> the clerk assigns an officer         (Assigned)
  *
  * The first step needs a button, and until this panel was added there was not
@@ -19,10 +20,11 @@
  * (D61): the server computes that array from the same transition table it
  * enforces with, so a button can never appear for a move that would 409.
  *
- * THIS ONLY MOVES THE PAPER. The AO does not log in and does not type. The clerk
- * records what the AO wrote on the next step, which is why no field other than
- * the button belongs here — the letter is back on the clerk's desk the moment
- * the minute is typed.
+ * THIS ONLY MOVES THE PAPER. The AO handwrites the minute; typing it into the
+ * system is the next step, and that step belongs to the AO or — when the AO has
+ * not had time to log in — to the main subject clerk. Either way the letter is
+ * back on the clerk's desk the moment the minute is recorded, which is why no
+ * field other than the button belongs here.
  */
 import { useState } from 'react';
 

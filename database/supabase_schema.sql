@@ -141,6 +141,7 @@ CREATE TABLE public.official_minutes (
   author_name          TEXT NOT NULL,
   instruction_type     TEXT NOT NULL,
   minutes_text         TEXT NOT NULL,
+  quick_note           TEXT NULL,
   -- The clerk who TYPED this minute, when it was recorded on behalf of an
   -- executive. NULL when the author entered it themselves. The AO handwrites the
   -- minute on the physical letter; the subject clerk enters it here, so
@@ -263,8 +264,18 @@ CREATE INDEX idx_notifications_user_unread ON public.notifications(user_id, is_r
 -- ============================================================================
 -- Storage bucket for mail attachments
 -- ============================================================================
+-- `allowed_mime_types` must list EXACTLY the types the client sends, which are
+-- derived from the file's extension (frontend/src/utils/fileTypes.js) — the
+-- browser's own guess at a file's type is the operating system's, and that
+-- differs from desk to desk. A type missing from this list is a file the form
+-- accepts and storage refuses. `image/tiff` is here because office scanning
+-- software writes TIFF.
+--
+-- NB: `ON CONFLICT DO NOTHING` means this statement only ever CREATES the
+-- bucket. An existing bucket keeps whatever rules it was given; use
+-- patch_fix_attachment_mime_types.sql to bring an existing one up to date.
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES ('mail-attachments', 'mail-attachments', false, 10485760, ARRAY['application/pdf','image/jpeg','image/png','image/gif','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document'])
+VALUES ('mail-attachments', 'mail-attachments', false, 10485760, ARRAY['application/pdf','image/jpeg','image/jpg','image/png','image/gif','image/tiff','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document'])
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================================
@@ -349,8 +360,15 @@ BEGIN
     END IF;
   ELSIF v_record.status::text = 'Forwarded to AO' THEN
     -- The AO records the primary minute; the letter then returns to the clerk.
+    -- The main (central) subject clerk may also record the minute on behalf of
+    -- the AO/Secretary when the AO has not yet added a minute.
     IF v_profile.role IN ('AO','ADMIN','SECRETARY','CHIEF_CLERK') THEN
       v_perms := array_append(v_perms, 'add_minutes');
+    ELSIF v_profile.role = 'SUBJECT_CLERK' AND v_profile.is_central_clerk THEN
+      -- Only allow if no minute has been added yet (by anyone) to prevent duplicates
+      IF NOT EXISTS (SELECT 1 FROM public.official_minutes om WHERE om.mail_record_id = p_mail_id) THEN
+        v_perms := array_append(v_perms, 'add_minutes');
+      END IF;
     END IF;
   ELSIF v_record.status::text = 'Forwarded to Subject' THEN
     -- The clerk routes it to an officer. The AO does not assign.
@@ -674,8 +692,18 @@ BEGIN
          AND p.id <> COALESCE(v_actor, v_nil);
 
     ELSIF NEW.status::text = 'Forwarded to Subject' THEN
+      -- The letter came back from the AO, so the clerk who logged it is told to
+      -- carry on routing it. A clerk who recorded the minute ON BEHALF of the AO
+      -- has just done that step themselves: telling them the letter "came back"
+      -- would be news about their own act. `recorded_by_user_id` is set only on a
+      -- delegated minute, so an AO recording their own still notifies the clerk.
       IF NEW.created_by_user_id IS NOT NULL
-         AND NEW.created_by_user_id <> COALESCE(v_actor, v_nil) THEN
+         AND NEW.created_by_user_id <> COALESCE(v_actor, v_nil)
+         AND NOT EXISTS (
+           SELECT 1 FROM public.official_minutes om
+           WHERE om.mail_record_id = NEW.id
+             AND om.recorded_by_user_id = v_actor
+         ) THEN
         PERFORM public.push_notification(NEW.created_by_user_id, 'returned', NEW.id, v_payload);
       END IF;
 
@@ -866,8 +894,18 @@ CREATE POLICY mail_read ON public.mail_records FOR SELECT TO authenticated USING
         -- OFFICER/TRANSPORT_OFFICER: assigned to them only
         OR (p.role IN ('OFFICER','TRANSPORT_OFFICER') AND mail_records.assigned_officer_id = p.id)
       )
-      -- Confidential hidden from SUBJECT_CLERK/OFFICER
-      AND NOT (p.role IN ('SUBJECT_CLERK','OFFICER','TRANSPORT_OFFICER') AND mail_records.priority = 'Confidential')
+      -- Confidential is hidden from SUBJECT_CLERK/OFFICER — but NOT from the
+      -- clerk who filed the letter. The filing clerk is the one who has to
+      -- forward it to the AO, so hiding it from them strands the letter: they
+      -- cannot open it, cannot move it, and INSERT ... RETURNING refuses the
+      -- row they just created ("new row violates row-level security policy for
+      -- table mail_records"). The creator sees their own confidential letter;
+      -- every other clerk and every officer still does not.
+      AND NOT (
+        p.role IN ('SUBJECT_CLERK','OFFICER','TRANSPORT_OFFICER')
+        AND mail_records.priority = 'Confidential'
+        AND mail_records.created_by_user_id IS DISTINCT FROM p.id
+      )
   )
 );
 
@@ -949,11 +987,33 @@ CREATE POLICY mail_delete ON public.mail_records FOR DELETE TO authenticated USI
 -- official_minutes
 CREATE POLICY minutes_read ON public.official_minutes FOR SELECT TO authenticated USING (true);
 
--- A minute is entered by its AUTHOR alone. The AO writes their own minute; there
--- is no "clerk records it on the AO's behalf" path, so authorship cannot be
--- forged by naming someone else in the insert.
+-- A minute is entered by its AUTHOR alone, or by the main (central) subject
+-- clerk on behalf of the AO/Secretary who wrote it on the physical letter.
+-- When recorded on behalf, author_user_id must be the AO/Secretary who wrote
+-- it, author_role must match, and recorded_by_user_id must be the clerk typing it.
 CREATE POLICY minutes_write ON public.official_minutes FOR INSERT TO authenticated WITH CHECK (
+  -- The author enters their own minute.
   auth.uid() = author_user_id
+  -- OR the main subject clerk enters it on behalf of an executive.
+  OR (
+    recorded_by_user_id = auth.uid()
+    AND author_user_id IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM public.mail_records m
+      JOIN public.profiles p ON p.id = auth.uid()
+      JOIN public.profiles a ON a.id = official_minutes.author_user_id
+      WHERE m.id = official_minutes.mail_record_id
+        AND p.role = 'SUBJECT_CLERK'
+        AND p.is_central_clerk = TRUE
+        AND m.status::text = 'Forwarded to AO'
+        AND NOT EXISTS (SELECT 1 FROM public.official_minutes om2 WHERE om2.mail_record_id = m.id)
+        AND a.role IN ('AO','ADMIN','SECRETARY','CHIEF_CLERK')
+        -- The clerk may NAME an executive as the author, but may not rename
+        -- them: the displayed role and name must be that person's real ones.
+        AND a.role::text = official_minutes.author_role
+        AND a.full_name = official_minutes.author_name
+    )
+  )
 );
 
 -- officer_duties

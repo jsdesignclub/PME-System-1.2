@@ -35,7 +35,7 @@ import { isoToday } from '../../utils/dateUtils.js';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { ErrorNote } from '../common/ErrorNote.jsx';
 import { Modal } from '../common/Modal.jsx';
-import { ALLOWED_EXTENSIONS } from '../mail/AttachmentList.jsx';
+import { ALLOWED_EXTENSIONS, MAX_UPLOAD_MB, extensionOf } from '../../utils/fileTypes.js';
 
 const SENDER_TYPES = Object.freeze([
   'Government Office',
@@ -45,9 +45,6 @@ const SENDER_TYPES = Object.freeze([
 ]);
 
 const PRIORITIES = Object.freeze(['Normal', 'Urgent', 'Confidential']);
-
-/** 10 MB cap for attachments. */
-const MAX_UPLOAD_MB = 10;
 
 const INPUT =
   'w-full rounded-btn border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none';
@@ -200,8 +197,7 @@ export function NewMailForm({ onCreated }) {
 
   /** Validate one file. Returns an error string, or null when it is fine. */
   function reject(file) {
-    const dot = file.name.lastIndexOf('.');
-    const extension = dot === -1 ? '' : file.name.slice(dot).toLowerCase();
+    const extension = extensionOf(file.name);
 
     if (!ALLOWED_EXTENSIONS.includes(extension)) {
       return `"${file.name}" is not an accepted format. Allowed: ${ALLOWED_EXTENSIONS.join(', ')}.`;

@@ -77,7 +77,18 @@ CREATE POLICY mail_read ON public.mail_records FOR SELECT TO authenticated USING
         ))
         OR (p.role IN ('OFFICER','TRANSPORT_OFFICER') AND mail_records.assigned_officer_id = p.id)
       )
-      AND NOT (p.role IN ('SUBJECT_CLERK','OFFICER','TRANSPORT_OFFICER') AND mail_records.priority = 'Confidential')
+      -- Confidential is hidden from SUBJECT_CLERK/OFFICER — but NOT from the
+      -- clerk who filed the letter. The filing clerk is the one who has to
+      -- forward it to the AO, so hiding it from them strands the letter: they
+      -- cannot open it, cannot move it, and INSERT ... RETURNING refuses the
+      -- row they just created ("new row violates row-level security policy for
+      -- table mail_records"). The creator sees their own confidential letter;
+      -- every other clerk and every officer still does not.
+      AND NOT (
+        p.role IN ('SUBJECT_CLERK','OFFICER','TRANSPORT_OFFICER')
+        AND mail_records.priority = 'Confidential'
+        AND mail_records.created_by_user_id IS DISTINCT FROM p.id
+      )
   )
 );
 
@@ -124,19 +135,34 @@ WITH CHECK (
 );
 
 -- 4. official_minutes — a clerk recording the AO's minute on their behalf -----
+-- The MAIN subject clerk only, and only while the letter carries no minute yet.
+-- The named author must be a real AO/ADMIN/SECRETARY/CHIEF_CLERK, and the clerk
+-- is always recorded as the person who typed it.
 DROP POLICY IF EXISTS minutes_write ON public.official_minutes;
 
 CREATE POLICY minutes_write ON public.official_minutes FOR INSERT TO authenticated WITH CHECK (
   auth.uid() = author_user_id
   OR (
     recorded_by_user_id = auth.uid()
+    AND author_user_id IS NOT NULL
     AND EXISTS (
-      SELECT 1 FROM public.mail_records m
-      JOIN public.profiles p ON p.id = auth.uid()
-      WHERE m.id = mail_record_id
-        AND p.role = 'SUBJECT_CLERK'
-        AND m.status::text = 'Forwarded to AO'
-        AND (p.is_central_clerk OR m.department_id = p.department_id OR m.created_by_user_id = p.id)
+      SELECT 1
+        FROM public.mail_records m
+        JOIN public.profiles p ON p.id = auth.uid()
+        JOIN public.profiles a ON a.id = official_minutes.author_user_id
+       WHERE m.id = official_minutes.mail_record_id
+         AND p.role = 'SUBJECT_CLERK'
+         AND p.is_central_clerk = TRUE
+         AND m.status::text = 'Forwarded to AO'
+         AND NOT EXISTS (
+           SELECT 1 FROM public.official_minutes om2
+            WHERE om2.mail_record_id = m.id
+         )
+         AND a.role IN ('AO','ADMIN','SECRETARY','CHIEF_CLERK')
+         -- The clerk may NAME an executive as the author, but may not rename
+         -- them: the displayed role and name must be that person's real ones.
+         AND a.role::text = official_minutes.author_role
+         AND a.full_name = official_minutes.author_name
     )
   )
 );

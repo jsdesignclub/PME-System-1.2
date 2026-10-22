@@ -837,6 +837,22 @@ export const en = Object.freeze({
   'minutes.presetInformation': 'For Information',
   'minutes.presetAction': 'For Necessary Action',
 
+  // The main (central) subject clerk recording the minute on the AO's behalf.
+  'minutes.formTitleOnBehalf': 'Record the AO\'s minutes and forward',
+  'minutes.formHintOnBehalf':
+    'The AO has not recorded a minute on this letter yet. ' +
+    'Enter what they wrote on the physical letter — the minute is recorded in their name, ' +
+    'with you named as the clerk who entered it.',
+  'minutes.onBehalfAuthor': 'Minute written by',
+  'minutes.onBehalfHint':
+    'The minute is recorded in the selected person\'s name. You are named as the clerk who entered it.',
+  'minutes.onBehalfNoAuthors': 'No active AO or Secretary to name',
+  'minutes.quickNote': 'Quick note (optional)',
+  'minutes.quickNotePlaceholder': 'e.g. Minuted from the AO\'s handwritten note on the original letter',
+  'minutes.quickNoteHint': 'For the file — shown with the minute.',
+  'minutes.recordedBy': 'Recorded by the clerk on behalf of the author',
+  'minutes.quickNoteLabel': 'Quick note: {note}',
+
   'users.title': 'Users',
   'users.search': 'Search',
   'users.searchPlaceholder': 'name or NIC',

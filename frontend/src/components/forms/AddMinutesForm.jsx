@@ -6,11 +6,6 @@
  * that wants a fifth instruction type should be able to type it rather than
  * blocked by a dropdown. The presets are the common four, not a whitelist.
  *
- * The body sent is exactly `{ instruction_type, minutes_text, department_id }`.
- * `author_name` and `author_role` are deliberately absent: the server derives
- * them from the token, and sending them is a 400 (Phase 2 D63). Forging
- * authorship is not merely discouraged, it is unrepresentable.
- *
  * WHY THERE IS A DEPARTMENT PICKER HERE. The department is chosen at INTAKE —
  * reception reads it off the envelope — and this picker starts on that value, so
  * the Secretary normally just confirms it. They change it when reception filed
@@ -23,21 +18,21 @@
  * value is on screen and the Secretary can see whether it is right — a
  * correction nobody notices is not a correction.
  *
- * The body sent is `{ instruction_type, minutes_text, department_id }`.
- * `author_name` and `author_role` are deliberately absent: the server derives
- * them from the token, and sending them is a 400 (Phase 2 D63). Forging
- * authorship is not merely discouraged, it is unrepresentable.
- *
  * The panel says plainly that this ALSO forwards the letter, because it does —
  * one action server-side, one transaction. A Secretary who does not know their
  * endorsement moves the status will be surprised by it exactly once, and that
  * surprise is worth one sentence of explanation.
+ *
+ * Main subject clerk: when recording on behalf of the AO/Secretary who wrote
+ * the minute on the physical letter, they select the AO/Secretary, provide a
+ * quick note, and the minute is attributed to that person with recorded_by_user_id set.
  */
 import { useEffect, useState } from 'react';
 
 import * as departmentApi from '../../api/departmentApi.js';
 import * as mailApi from '../../api/mailApi.js';
 import { useApiError } from '../../hooks/useApiError.js';
+import { useAuth } from '../../hooks/useAuth.js';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { ErrorNote } from '../common/ErrorNote.jsx';
 
@@ -51,8 +46,9 @@ const INSTRUCTION_PRESETS = Object.freeze([
 /** Over this, the text is a second letter rather than an endorsement. */
 const SOFT_LIMIT = 2000;
 
-export function AddMinutesForm({ letterId, departmentId: currentDepartmentId, onSaved }) {
+export function AddMinutesForm({ letterId, departmentId: currentDepartmentId, onSaved, letterStatus }) {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [instruction, setInstruction] = useState(INSTRUCTION_PRESETS[0]);
   const [text, setText] = useState('');
   const [departmentId, setDepartmentId] = useState(currentDepartmentId ?? '');
@@ -61,10 +57,13 @@ export function AddMinutesForm({ letterId, departmentId: currentDepartmentId, on
   const [busy, setBusy] = useState(false);
   const { failure, run, clear } = useApiError(t('new.failed'));
 
-  // GET /departments is open to every signed-in user, so this needs no
-  // permission of its own. Loading here rather than passing the list down from
-  // the page keeps this form self-contained: it is the only consumer, and the
-  // alternative is a prop every future caller has to remember to thread.
+  const [aoOptions, setAoOptions] = useState([]);
+  const [selectedAuthorId, setSelectedAuthorId] = useState('');
+  const [quickNote, setQuickNote] = useState('');
+
+  const canRecordOnBehalf =
+    user?.role === 'SUBJECT_CLERK' && user?.is_central_clerk && letterStatus === 'Forwarded to AO';
+
   useEffect(() => {
     let live = true;
     departmentApi
@@ -73,10 +72,6 @@ export function AddMinutesForm({ letterId, departmentId: currentDepartmentId, on
         if (live) setDepartments(rows);
       })
       .catch(() => {
-        // A failure here leaves the picker empty, and an empty picker cannot be
-        // submitted — so the form degrades to "cannot forward yet" with a stated
-        // reason, rather than to a submit that 400s on a missing id. A silent
-        // empty <select> would look like "this letter has no departments".
         if (live) setDepartmentsFailed(true);
       });
     return () => {
@@ -84,22 +79,47 @@ export function AddMinutesForm({ letterId, departmentId: currentDepartmentId, on
     };
   }, []);
 
+  useEffect(() => {
+    if (!canRecordOnBehalf) return undefined;
+    let live = true;
+    mailApi
+      .minuteAuthors()
+      .then((rows) => {
+        if (!live) return;
+        setAoOptions(rows);
+        setSelectedAuthorId((current) => current || rows[0]?.id || '');
+      })
+      .catch(() => {
+        if (live) setAoOptions([]);
+      });
+    return () => {
+      live = false;
+    };
+  }, [canRecordOnBehalf]);
+
   const over = text.length > SOFT_LIMIT;
 
-  // A letter with no department is the one case where the blank selection is
-  // NOT "keep what intake chose" - there is nothing to keep. Sending it anyway
-  // produces a 400 naming a field the Secretary cannot see on this form, so the
-  // button stays disabled until a department is actually chosen.
   const needsDepartment = !currentDepartmentId;
-  const canSubmit = text.trim() !== '' && !departmentsFailed && (!needsDepartment || departmentId !== '');
+  const canSubmit =
+    text.trim() !== '' &&
+    !departmentsFailed &&
+    (!needsDepartment || departmentId !== '') &&
+    (!canRecordOnBehalf || selectedAuthorId !== '');
 
   async function submit() {
     setBusy(true);
+    const selectedAuthor = aoOptions.find((a) => a.id === selectedAuthorId);
     const payload = {
       instruction_type: instruction,
       minutes_text: text.trim(),
       department_id: departmentId === '' ? undefined : Number(departmentId),
+      quick_note: quickNote.trim() || undefined,
     };
+    if (canRecordOnBehalf && selectedAuthor) {
+      payload.author_user_id = selectedAuthor.id;
+      payload.author_role = selectedAuthor.role;
+      payload.author_name = selectedAuthor.full_name;
+    }
     console.log('AddMinutesForm: submitting', payload);
     const saved = await run(() => mailApi.addMinutes(letterId, payload));
     setBusy(false);
@@ -107,6 +127,7 @@ export function AddMinutesForm({ letterId, departmentId: currentDepartmentId, on
     if (saved) {
       console.log('AddMinutesForm: saved successfully');
       setText('');
+      setQuickNote('');
       onSaved();
     } else {
       console.log('AddMinutesForm: save failed, failure state set');
@@ -117,13 +138,13 @@ export function AddMinutesForm({ letterId, departmentId: currentDepartmentId, on
     <section className="no-print rounded-lg border border-slate-200 bg-surface shadow-sm">
       <header className="border-b border-slate-200 px-5 py-3">
         <h2 className="text-sm font-semibold tracking-wide text-ink uppercase">
-          {t('minutes.formTitle')}
+          {canRecordOnBehalf ? t('minutes.formTitleOnBehalf') : t('minutes.formTitle')}
         </h2>
       </header>
 
       <div className="space-y-3 p-5">
         <p className="text-sm text-slate-600">
-          {t('minutes.formHint')}
+          {canRecordOnBehalf ? t('minutes.formHintOnBehalf') : t('minutes.formHint')}
         </p>
 
         <div>
@@ -158,6 +179,28 @@ export function AddMinutesForm({ letterId, departmentId: currentDepartmentId, on
               : t('minutes.noDepartmentHint')}
           </p>
         </div>
+
+        {canRecordOnBehalf && (
+          <div>
+            <label className="block text-sm">
+              <span className="font-medium text-slate-700">{t('minutes.onBehalfAuthor')}</span>
+              <select
+                value={selectedAuthorId}
+                onChange={(event) => setSelectedAuthorId(event.target.value)}
+                aria-label={t('minutes.onBehalfAuthor')}
+                className="mt-1 w-full rounded-btn border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none"
+              >
+                {aoOptions.length === 0 && <option value="">{t('minutes.onBehalfNoAuthors')}</option>}
+                {aoOptions.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.full_name} · {String(a.role).replaceAll('_', ' ')}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="mt-0.5 text-xs text-slate-500">{t('minutes.onBehalfHint')}</p>
+          </div>
+        )}
 
         <div>
           <p className="text-sm font-medium text-slate-700">{t('minutes.instruction')}</p>
@@ -200,6 +243,20 @@ export function AddMinutesForm({ letterId, departmentId: currentDepartmentId, on
           <p className={`mt-0.5 text-xs ${over ? 'text-amber-700' : 'text-slate-500'}`}>
             {over ? t('minutes.charCountLong', { count: text.length }) : t('minutes.charCount', { count: text.length })}
           </p>
+        </div>
+
+        <div>
+          <label className="block text-sm">
+            <span className="font-medium text-slate-700">{t('minutes.quickNote')}</span>
+            <input
+              value={quickNote}
+              onChange={(event) => setQuickNote(event.target.value)}
+              placeholder={t('minutes.quickNotePlaceholder')}
+              aria-label={t('minutes.quickNote')}
+              className="mt-1 w-full rounded-btn border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none"
+            />
+          </label>
+          <p className="mt-0.5 text-xs text-slate-500">{t('minutes.quickNoteHint')}</p>
         </div>
 
         {failure && (

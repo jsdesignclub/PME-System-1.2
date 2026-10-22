@@ -69,6 +69,16 @@ export function describeFailure(failure) {
       retryable: false,
       remedy: 'Correct the highlighted field and submit again.',
     },
+    'unsupported-file': {
+      retryable: false,
+      remedy:
+        'The server refused this file type. Convert it to PDF, or to a JPEG or PNG image, and attach that instead.',
+    },
+    'storage-refused': {
+      retryable: false,
+      remedy:
+        'The file could not be stored: the server\'s rules for the attachments bucket refuse it. The storage policies for the mail-attachments bucket must be applied.',
+    },
     server: {
       retryable: true,
       remedy: 'The server failed while handling this. Trying again is reasonable.',

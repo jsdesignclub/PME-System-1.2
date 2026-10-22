@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient.js';
+import { mimeTypeFor, withCanonicalType } from '../utils/fileTypes.js';
 
 export async function list(filters = {}, paging = {}, options = {}) {
   const limit = paging.limit || 25;
@@ -95,6 +96,14 @@ export async function getById(id) {
     .single();
   if (error) throw error;
 
+  // Minutes are ordered here rather than in the select, because the print slip
+  // shows the FIRST minute and the order PostgREST returns is not guaranteed.
+  // A letter can carry more than one minute now that a clerk may record on the
+  // AO's behalf, so "the first one" has to mean the earliest one, every time.
+  data.minutes = [...(data.minutes ?? [])].sort(
+    (a, b) => new Date(a.created_at) - new Date(b.created_at),
+  );
+
   const { data: { user } } = await supabase.auth.getUser();
   if (user) {
     const { data: actions } = await supabase.rpc('mail_available_actions', {
@@ -172,6 +181,31 @@ export async function officers({ limit = 100, departmentId, includeClerks = fals
   let query = supabase.from('profiles').select('id,nic_no,full_name,email,role,department_id,designation,section_name,is_central_clerk,department:departments(id,name,code)').in('role', roles);
   if (departmentId) query = query.eq('department_id', departmentId);
   const { data, error } = await query.limit(limit);
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * The executives who may be named as the author of a minute.
+ *
+ * A minute on a physical letter is written by an AO (or the Secretary), so when
+ * the main subject clerk enters it on their behalf they must say WHICH one
+ * wrote it. `mail_records` has no `assigned_ao_id` — the AO queue is shared by
+ * every active AO — so there is no server-side pointer to read the author off;
+ * the clerk has to name them, and the list of possible names has to come from
+ * somewhere.
+ *
+ * `profiles_read` is open to every signed-in user, so this needs no permission
+ * of its own. The role filter is applied HERE rather than by the client, so the
+ * dropdown holds executives and nobody else.
+ */
+export async function minuteAuthors() {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, role, designation, section_name, is_active')
+    .in('role', ['AO', 'SECRETARY', 'CHIEF_CLERK', 'ADMIN'])
+    .eq('is_active', true)
+    .order('full_name');
   if (error) throw error;
   return data || [];
 }
@@ -263,38 +297,79 @@ export async function create(fields, file) {
   const { data, error } = await supabase.from('mail_records').insert(record).select().single();
   if (error) throw error;
   if (file) {
-    await uploadAttachment(data.id, file);
+    try {
+      await uploadAttachment(data.id, file);
+    } catch (uploadError) {
+      // A letter and its scan are one thing. The letter is written first,
+      // because the scan's metadata row names the letter — but a refused
+      // upload must not leave the letter behind. The clerk is told the filing
+      // failed and types the letter again, so an orphaned row would put two
+      // letters in the register, one of them with no scan at all. The row is
+      // still at 'Logged' and still names this caller, so `mail_delete` allows
+      // it to be removed.
+      await supabase.from('mail_records').delete().eq('id', data.id);
+      throw uploadError;
+    }
   }
   return data;
 }
 
-export async function addMinutes(id, { instruction_type, minutes_text, department_id }) {
+export async function addMinutes(
+  id,
+  { instruction_type, minutes_text, department_id, author_user_id, author_role, author_name, quick_note } = {}
+) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
   const profile = await fetchProfile(user.id);
   if (!profile) throw new Error('User profile not found');
 
-  // The author is the caller, full stop. The AO records their own minute now;
-  // there is no "record it for the AO" path, and authorship is never taken from
-  // the request body.
-  const { data, error } = await supabase.from('official_minutes').insert({
+  const isCentralClerkRecordingOnBehalf =
+    profile.role === 'SUBJECT_CLERK' &&
+    profile.is_central_clerk &&
+    author_user_id &&
+    author_user_id !== user.id;
+
+  const insertPayload = {
     mail_record_id: id,
-    author_user_id: user.id,
-    author_role: profile.role,
-    author_name: profile.full_name,
+    author_user_id: isCentralClerkRecordingOnBehalf ? author_user_id : user.id,
+    author_role: isCentralClerkRecordingOnBehalf ? author_role || profile.role : profile.role,
+    author_name: isCentralClerkRecordingOnBehalf ? author_name || profile.full_name : profile.full_name,
     instruction_type,
     minutes_text,
-  }).select().single();
+  };
+
+  // `quick_note` is sent ONLY when there is one. A key that is absent from the
+  // body is a column Postgres never sees, so a minute with no note still inserts
+  // on a database where the column has not been added yet — which keeps the
+  // note from being a hard dependency of every other path into this table.
+  if (quick_note?.trim()) {
+    insertPayload.quick_note = quick_note.trim();
+  }
+
+  if (isCentralClerkRecordingOnBehalf) {
+    insertPayload.recorded_by_user_id = user.id;
+  }
+
+  const { data, error } = await supabase.from('official_minutes').insert(insertPayload).select().single();
   if (error) {
     console.error('addMinutes: official_minutes insert error', error);
     throw error;
   }
 
   // Recording the minute hands the letter back to the clerk, who then assigns.
+  // The move is CONDITIONAL on the letter still being at 'Forwarded to AO': that
+  // is the only state a minute may be recorded in, so if the letter has moved
+  // since the insert then somebody else got there first, and writing
+  // 'Forwarded to Subject' over their state would undo their work.
   const updates = { status: 'Forwarded to Subject' };
   if (department_id !== undefined) updates.department_id = department_id;
 
-  const { data: updatedRecords, error: updateError } = await supabase.from('mail_records').update(updates).eq('id', id).select();
+  const { data: updatedRecords, error: updateError } = await supabase
+    .from('mail_records')
+    .update(updates)
+    .eq('id', id)
+    .eq('status', 'Forwarded to AO')
+    .select();
   if (updateError) {
     console.error('addMinutes: mail_records update error', updateError);
     throw updateError;
@@ -430,18 +505,33 @@ async function uploadAttachment(mailId, file) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
   const path = `${mailId}/${crypto.randomUUID()}-${file.name}`;
-  const { error: uploadError } = await supabase.storage.from('mail-attachments').upload(path, file);
+  // The Content-Type is stated explicitly, from the file's extension. Left to
+  // itself the browser sends `file.type`, which is the operating system's guess
+  // at the extension — and that guess differs from desk to desk, so the same
+  // scan is accepted on one machine and refused by the bucket's mime allowlist
+  // on another. The extension is what the clerk chose and what the allowlist
+  // already validated, so it is the answer storage is given.
+  const contentType = mimeTypeFor(file);
+  const { error: uploadError } = await supabase.storage
+    .from('mail-attachments')
+    .upload(path, withCanonicalType(file), { contentType });
   if (uploadError) throw uploadError;
   const { data, error } = await supabase.from('mail_attachments').insert({
     mail_record_id: mailId,
     original_name: file.name,
     stored_name: file.name,
     stored_path: path,
-    mime_type: file.type,
+    mime_type: contentType,
     size_bytes: file.size,
     uploaded_by: user.id,
   }).select().single();
-  if (error) throw error;
+  if (error) {
+    // The bytes are in the bucket but nothing points at them. Removing them is
+    // best effort: the object is unreachable either way, and failing to remove
+    // it must not mask the error that caused this.
+    await supabase.storage.from('mail-attachments').remove([path]);
+    throw error;
+  }
   // Update has_attachment flag
   await supabase.from('mail_records').update({ has_attachment: true }).eq('id', mailId);
   return data;

@@ -25,9 +25,12 @@
 --    'Forwarded to Subject', and the page they are looking at immediately 404s.
 --    The AO is no longer an executive (READ_ALL_MAIL) role.
 --
--- 3. The AO records the minute; the clerk does not record it on the AO's
---    behalf. `add_minutes` at 'Forwarded to AO' is granted to the AO (and the
---    ADMIN/SECRETARY/CHIEF_CLERK as an escape hatch), not to SUBJECT_CLERK.
+-- 3. The AO records the minute. `add_minutes` at 'Forwarded to AO' is granted to
+--    the AO (and the ADMIN/SECRETARY/CHIEF_CLERK as an escape hatch), and to the
+--    MAIN subject clerk — but only while the letter carries no minute yet, so
+--    the clerk can enter what the AO wrote on the paper without a competing
+--    endorsement ever being possible. See patch_central_clerk_add_minutes.sql
+--    for the full rule.
 --
 -- 4. The AO still sees the MINISTRY-WIDE progress dashboard (same component as
 --    admin/secretary), even though their letters stay scoped to their queue.
@@ -87,8 +90,16 @@ BEGIN
     END IF;
   ELSIF v_record.status::text = 'Forwarded to AO' THEN
     -- The AO records the primary minute; the letter then returns to the clerk.
+    -- The MAIN subject clerk may also record it on the AO's behalf, but only
+    -- while the letter carries no minute yet.
     IF v_profile.role IN ('AO','ADMIN','SECRETARY','CHIEF_CLERK') THEN
       v_perms := array_append(v_perms, 'add_minutes');
+    ELSIF v_profile.role = 'SUBJECT_CLERK' AND v_profile.is_central_clerk THEN
+      IF NOT EXISTS (
+        SELECT 1 FROM public.official_minutes om WHERE om.mail_record_id = p_mail_id
+      ) THEN
+        v_perms := array_append(v_perms, 'add_minutes');
+      END IF;
     END IF;
   ELSIF v_record.status::text = 'Forwarded to Subject' THEN
     -- The clerk routes it to an officer. The AO does not assign.
@@ -158,9 +169,18 @@ CREATE POLICY mail_read ON public.mail_records FOR SELECT TO authenticated USING
         ))
         OR (p.role IN ('OFFICER','TRANSPORT_OFFICER') AND mail_records.assigned_officer_id = p.id)
       )
-      -- Confidential hidden from SUBJECT_CLERK/OFFICER. The AO sees a
-      -- confidential letter the clerk forwarded to them, exactly as before.
-      AND NOT (p.role IN ('SUBJECT_CLERK','OFFICER','TRANSPORT_OFFICER') AND mail_records.priority = 'Confidential')
+      -- Confidential is hidden from SUBJECT_CLERK/OFFICER — but NOT from the
+      -- clerk who filed the letter. The filing clerk is the one who has to
+      -- forward it to the AO, so hiding it from them strands the letter: they
+      -- cannot open it, cannot move it, and INSERT ... RETURNING refuses the
+      -- row they just created ("new row violates row-level security policy for
+      -- table mail_records"). The creator sees their own confidential letter;
+      -- every other clerk and every officer still does not.
+      AND NOT (
+        p.role IN ('SUBJECT_CLERK','OFFICER','TRANSPORT_OFFICER')
+        AND mail_records.priority = 'Confidential'
+        AND mail_records.created_by_user_id IS DISTINCT FROM p.id
+      )
   )
 );
 
@@ -218,12 +238,41 @@ WITH CHECK (
 -- ============================================================================
 -- 4. official_minutes write policy — a minute is authored by its writer
 -- ============================================================================
--- Supersedes the old "clerk records the AO's minute on the AO's behalf" clause.
--- The AO writes their own minute, so the only allowed INSERT is authorship.
+-- Two ways in:
+--
+--  * The AUTHOR enters their own minute. Unchanged, and always available.
+--  * The MAIN subject clerk enters it ON BEHALF of the AO/ADMIN/SECRETARY/
+--    CHIEF_CLERK who wrote it on the physical letter. The clerk is named as
+--    `recorded_by_user_id`; the letter must still be at 'Forwarded to AO' and
+--    must carry no minute yet, so a second, competing endorsement cannot be
+--    added on top of the AO's own.
 DROP POLICY IF EXISTS minutes_write ON public.official_minutes;
 
 CREATE POLICY minutes_write ON public.official_minutes FOR INSERT TO authenticated WITH CHECK (
   auth.uid() = author_user_id
+  OR (
+    recorded_by_user_id = auth.uid()
+    AND author_user_id IS NOT NULL
+    AND EXISTS (
+      SELECT 1
+        FROM public.mail_records m
+        JOIN public.profiles p ON p.id = auth.uid()
+        JOIN public.profiles a ON a.id = official_minutes.author_user_id
+       WHERE m.id = official_minutes.mail_record_id
+         AND p.role = 'SUBJECT_CLERK'
+         AND p.is_central_clerk = TRUE
+         AND m.status::text = 'Forwarded to AO'
+         AND NOT EXISTS (
+           SELECT 1 FROM public.official_minutes om2
+            WHERE om2.mail_record_id = m.id
+         )
+         AND a.role IN ('AO','ADMIN','SECRETARY','CHIEF_CLERK')
+         -- The clerk may NAME an executive as the author, but may not rename
+         -- them: the displayed role and name must be that person's real ones.
+         AND a.role::text = official_minutes.author_role
+         AND a.full_name = official_minutes.author_name
+    )
+  )
 );
 
 

@@ -40,6 +40,14 @@ export function MinutesTimeline({ minutes, audit }) {
                 <p className="mt-1 text-sm font-medium text-slate-800">
                   {minute.author_name} · {String(minute.author_role).replaceAll('_', ' ')}
                 </p>
+                {minute.recorded_by_user_id && (
+                  <p className="mt-0.5 text-xs text-slate-500">{t('minutes.recordedBy')}</p>
+                )}
+                {minute.quick_note && (
+                  <p className="mt-1 text-xs italic text-slate-600">
+                    {t('minutes.quickNoteLabel', { note: minute.quick_note })}
+                  </p>
+                )}
                 <p className="mt-2 text-sm leading-relaxed whitespace-pre-line text-slate-700">
                   {minute.minutes_text}
                 </p>

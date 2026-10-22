@@ -19,11 +19,10 @@ import { formatBytes, formatDate } from '../../utils/dateUtils.js';
 import { useObjectUrl } from '../../hooks/useObjectUrl.js';
 import { Card } from '../common/Card.jsx';
 import { ErrorNote } from '../common/ErrorNote.jsx';
+import { ALLOWED_EXTENSIONS, extensionOf } from '../../utils/fileTypes.js';
 
 /** The same allowlist the server enforces, so the UI can say it up front. */
-export const ALLOWED_EXTENSIONS = Object.freeze([
-  '.pdf', '.jpg', '.jpeg', '.png', '.tiff', '.doc', '.docx',
-]);
+export { ALLOWED_EXTENSIONS };
 
 /** Types a browser will render in an `<img>` or `<embed>`. */
 const PREVIEWABLE = new Set([
@@ -77,8 +76,7 @@ export function AttachmentList({ letterId, attachments, canUpload, onChanged }) 
     // rejected whole, and "Only .pdf… can be attached" leaves the reader
     // guessing which of the twelve files on a scanner's output needs renaming.
     for (const file of files) {
-      const dot = file.name.lastIndexOf('.');
-      const extension = dot === -1 ? '' : file.name.slice(dot).toLowerCase();
+      const extension = extensionOf(file.name);
       if (!ALLOWED_EXTENSIONS.includes(extension)) {
         setError({
           message: `"${file.name}" cannot be attached. Allowed: ${ALLOWED_EXTENSIONS.join(', ')}.`,

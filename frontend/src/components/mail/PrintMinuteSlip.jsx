@@ -143,6 +143,14 @@ export function PrintMinuteSlip({ mail, minutes }) {
               <p className="slip-author">
                 {minute.author_name} · {String(minute.author_role).replaceAll('_', ' ')}
               </p>
+              {minute.recorded_by_user_id && (
+                <p className="slip-author">{t('minutes.recordedBy')}</p>
+              )}
+              {minute.quick_note && (
+                <p className="slip-minutes" style={{ marginTop: '6pt', fontStyle: 'italic' }}>
+                  {t('minutes.quickNoteLabel', { note: minute.quick_note })}
+                </p>
+              )}
             </>
           ) : (
             <p className="slip-minutes slip-empty">

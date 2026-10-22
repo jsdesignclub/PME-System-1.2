@@ -266,6 +266,7 @@ export default function MailDetailPage() {
         <AddMinutesForm
           letterId={mail.id}
           departmentId={mail.department_id}
+          letterStatus={status}
           onSaved={load}
         />
       )}
