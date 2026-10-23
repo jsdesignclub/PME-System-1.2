@@ -2,7 +2,7 @@
  * The shared table: columns, server-side sort, pagination.
  *
  * SERVER-SIDE sort and paging, and that is the decision this component exists to
- * enforce. The registry is paginated at 25; sorting those 25 rows in the browser
+ * enforce. The registry is paginated at 20 by default (more on request); sorting those rows in the browser
  * and calling the result sorted produces a table ordered by the page the server
  * chose, which is the registry's default order. A clerk looking for the oldest
  * Urgent letter would be shown the newest 25, sorted among themselves, and have

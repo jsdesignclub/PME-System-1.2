@@ -32,6 +32,7 @@ import { useApiError } from '../hooks/useApiError.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { useDutyMatcher } from '../hooks/useDutyMatcher.js';
 import { formatDate, formatDateTime, addDays } from '../utils/dateUtils.js';
+import { isBranchLetter } from '../utils/mailStatus.js';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { Card } from '../components/common/Card.jsx';
 import { ErrorNote } from '../components/common/ErrorNote.jsx';
@@ -136,6 +137,11 @@ export default function MailDetailPage() {
     ...mail
   } = detail || {};
   mail.status = status;
+  // A branch letter keeps the stored status 'Forwarded to AO' but its paper is
+  // waiting on the branch head. `endorser_role` answers that once forwarded; the
+  // logging clerk answers it before the marker is written, so the rail and badge
+  // never call a branch step "AO".
+  const branchLetter = isBranchLetter(mail);
   const canAssign = actions.some((a) => a.action === 'assign');
   const canWriteMinutes = actions.some((a) => a.action === 'add_minutes');
   const canForwardToAo = actions.some((a) => a.action === 'forward_to_ao');
@@ -163,7 +169,7 @@ export default function MailDetailPage() {
           </Link>
           <h1 className="mt-1 flex flex-wrap items-center gap-3 text-2xl font-semibold text-ink">
             <span className="font-mono">{mail.day_stamp_no}</span>
-            <StatusBadge status={mail.status} endorserRole={mail.endorser_role} />
+            <StatusBadge status={mail.status} endorserRole={mail.endorser_role} branch={branchLetter} />
             <PriorityBadge priority={mail.priority} />
           </h1>
           <p className="mt-1 text-slate-700">{mail.subject}</p>
@@ -177,6 +183,7 @@ export default function MailDetailPage() {
         hasMinutes={minutes.length > 0}
         availableActions={actions}
         endorserRole={mail.endorser_role}
+        branch={branchLetter}
       />
 
       {completionDue && status !== 'Completed' && (

@@ -48,6 +48,7 @@ import { useState } from 'react';
 
 import { STATES } from '../../context/MailContext.jsx';
 import { formatDate, formatDateTime } from '../../utils/dateUtils.js';
+import { statusLabelKey } from '../../utils/mailStatus.js';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { printDocument } from '../../utils/printUtils.js';
 import { Emblem } from '../common/Header.jsx';
@@ -105,7 +106,7 @@ export function PrintMinuteSlip({ mail, minutes }) {
             </div>
             <div>
               <dt>{t('print.status')}</dt>
-              <dd>{mail.status}</dd>
+              <dd>{t(statusLabelKey(mail))}</dd>
             </div>
           </dl>
         </header>
@@ -176,7 +177,7 @@ export function PrintMinuteSlip({ mail, minutes }) {
           <span>
             {STATES.indexOf(mail.status) === STATES.length - 1
               ? t('print.fileCopy')
-              : t('print.workingCopy', { status: mail.status })}
+              : t('print.workingCopy', { status: t(statusLabelKey(mail)) })}
           </span>
           <span>Printed {formatDateTime(printedAt)}</span>
         </footer>

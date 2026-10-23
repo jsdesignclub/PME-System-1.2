@@ -18,16 +18,18 @@
 import { STATES } from '../../context/MailContext.jsx';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 
-export function StatusRail({ status, hasMinutes, availableActions = [], endorserRole = null }) {
+export function StatusRail({ status, hasMinutes, availableActions = [], endorserRole = null, branch = false }) {
   const { t } = useLanguage();
   const currentIndex = STATES.indexOf(status);
   const unknown = currentIndex === -1;
 
   // The states are drawn verbatim (D48), but 'Forwarded to AO' names the wrong
   // person for a letter that arrived at a branch: that stop is waiting on the
-  // branch's Department Head. `endorser_role` tells the two apart; see
-  // StatusBadge for why the status value itself is not renamed.
-  const branchStop = endorserRole === 'DEPARTMENT_HEAD';
+  // branch's Department Head. `endorser_role` tells the two apart once the
+  // forward is made; `branch` covers a freshly logged branch letter, before the
+  // marker exists. See StatusBadge for why the status value itself is not
+  // renamed.
+  const branchStop = branch || endorserRole === 'DEPARTMENT_HEAD';
 
   return (
     <ol
@@ -52,7 +54,9 @@ export function StatusRail({ status, hasMinutes, availableActions = [], endorser
             }`}
           >
             <span className="mr-1.5 font-mono">{index + 1}</span>
-            {branchStop && state === 'Forwarded to AO' ? 'Forwarded to Branch Head' : state}
+            {branchStop && state === 'Forwarded to AO'
+              ? t('status.Forwarded to Branch Head')
+              : state}
             {done && ' ✓'}
             {minutesHere && (
               <span

@@ -15,6 +15,7 @@
 import { Link } from 'react-router-dom';
 
 import { addDays, formatDate, isoToday } from '../../utils/dateUtils.js';
+import { isBranchLetter } from '../../utils/mailStatus.js';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { DataTable } from '../common/DataTable.jsx';
 import { PriorityBadge } from '../common/PriorityBadge.jsx';
@@ -95,7 +96,13 @@ export function MailTable({ categories, ...props }) {
       key: 'status',
       header: t('common.status'),
       sortable: true,
-      render: (row) => <StatusBadge status={row.status} endorserRole={row.endorser_role} />,
+      render: (row) => (
+        <StatusBadge
+          status={row.status}
+          endorserRole={row.endorser_role}
+          branch={isBranchLetter(row)}
+        />
+      ),
     },
     {
       key: 'priority',

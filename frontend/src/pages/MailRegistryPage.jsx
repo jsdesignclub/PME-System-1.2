@@ -31,7 +31,7 @@ import { ErrorNote } from '../components/common/ErrorNote.jsx';
 import { Modal } from '../components/common/Modal.jsx';
 import { MailTable } from '../components/mail/MailTable.jsx';
 import { PrintRegistryTable } from '../components/mail/PrintRegistryTable.jsx';
-import { PAGE_SIZE, PRIORITIES, SENDER_TYPES, STATES, useMail } from '../context/MailContext.jsx';
+import { PAGE_SIZE, PAGE_SIZE_OPTIONS, PRIORITIES, SENDER_TYPES, STATES, useMail } from '../context/MailContext.jsx';
 import { useAuth } from '../hooks/useAuth.js';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { printDocument } from '../utils/printUtils.js';
@@ -64,6 +64,9 @@ export default function MailRegistryPage() {
   }, [adoptFilters, searchParams]);
 
   const [sort, setSort] = useState(null);
+  // Rows per page. `'all'` asks for the whole filtered result set in one go;
+  // a number is passed straight to the server as the page limit.
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [result, setResult] = useState({ rows: [], total: 0 });
   const [loading, setLoading] = useState(true);
   const [failure, setFailure] = useState('');
@@ -107,7 +110,16 @@ export default function MailRegistryPage() {
     setFailure('');
     setNotice('');
 
-    list(applied, { limit: PAGE_SIZE, offset, sort }, { departmentId: user?.department_id, canReadAllMail: seesAllDepartments })
+    const options = { departmentId: user?.department_id, canReadAllMail: seesAllDepartments };
+    // 'All' pages through the whole filtered set (the server caps one response),
+    // so a large registry still arrives complete. A numeric choice is a normal
+    // server-side page.
+    const request =
+      pageSize === 'all'
+        ? listAll(applied, options, 500, sort).then((rows) => ({ rows, total: rows.length }))
+        : list(applied, { limit: pageSize, offset, sort }, options);
+
+    request
       .then((next) => {
         if (id === requestId.current) setResult(next);
       })
@@ -117,12 +129,17 @@ export default function MailRegistryPage() {
       .finally(() => {
         if (id === requestId.current) setLoading(false);
       });
-  }, [applied, offset, sort, user?.department_id, seesAllDepartments]);
+  }, [applied, offset, sort, pageSize, user?.department_id, seesAllDepartments]);
 
   useEffect(load, [load]);
 
   const changeSort = useCallback((next) => {
     setSort(next);
+    setOffset(0);
+  }, [setOffset]);
+
+  const changePageSize = useCallback((value) => {
+    setPageSize(value === 'all' ? 'all' : Number(value));
     setOffset(0);
   }, [setOffset]);
 
@@ -362,9 +379,30 @@ export default function MailRegistryPage() {
             <div className="flex flex-wrap items-center justify-end gap-2">
               {result.total > 0 && (
                 <span className="text-sm text-slate-500">
-                  {t('common.showing', { from: offset + 1, to: Math.min(offset + PAGE_SIZE, result.total), total: result.total })}
+                  {t('common.showing', {
+                    from: offset + 1,
+                    to:
+                      pageSize === 'all'
+                        ? result.total
+                        : Math.min(offset + pageSize, result.total),
+                    total: result.total,
+                  })}
                 </span>
               )}
+              <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                <span>{t('registry.rowsPerPage')}</span>
+                <select
+                  value={pageSize}
+                  onChange={(event) => changePageSize(event.target.value)}
+                  className="rounded-btn border border-slate-300 bg-surface px-2 py-1 text-xs text-ink focus:border-brand focus:outline-none"
+                >
+                  {PAGE_SIZE_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option === 'all' ? t('registry.showAll') : option}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <button
                 type="button"
                 onClick={handleExportCsv}
@@ -390,7 +428,7 @@ export default function MailRegistryPage() {
             loading={loading}
             total={result.total}
             offset={offset}
-            pageSize={PAGE_SIZE}
+            pageSize={pageSize === 'all' ? Math.max(result.rows.length, 1) : pageSize}
             sort={sort}
             onSortChange={changeSort}
             onOffsetChange={setOffset}

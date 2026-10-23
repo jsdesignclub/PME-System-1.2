@@ -69,7 +69,7 @@ export function PrintRegistryTable({ rows, filters }) {
           <thead>
             <tr>
               {REGISTRY_COLUMNS.map((column) => (
-                <th key={column.key}>{t(column.header)}</th>
+                <th key={column.key} className={column.className}>{t(column.header)}</th>
               ))}
             </tr>
           </thead>
@@ -77,7 +77,16 @@ export function PrintRegistryTable({ rows, filters }) {
             {safeRows.map((row) => (
               <tr key={row.id}>
                 {REGISTRY_COLUMNS.map((column) => (
-                  <td key={column.key}>{column.value(row) || '—'}</td>
+                  <td key={column.key} className={column.className}>
+                    {column.key === 'signature' ? (
+                      <span
+                        className="registry-print-signature-line"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      column.value(row) || '—'
+                    )}
+                  </td>
                 ))}
               </tr>
             ))}

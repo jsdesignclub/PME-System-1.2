@@ -13,6 +13,7 @@
  * the file is useless, which is the worst outcome because nothing reports it.
  */
 import { formatDate, isoToday } from './dateUtils.js';
+import { isBranchLetter } from './mailStatus.js';
 
 /**
  * The registry columns, in screen order: day stamp, reference, subject, sender,
@@ -32,7 +33,7 @@ import { formatDate, isoToday } from './dateUtils.js';
  * letter sends the reader to the wrong desk.
  */
 export function statusText(row) {
-  if (row?.status === 'Forwarded to AO' && row?.endorser_role === 'DEPARTMENT_HEAD') {
+  if (row?.status === 'Forwarded to AO' && isBranchLetter(row)) {
     return 'Forwarded to Branch Head';
   }
   return row?.status ?? '';
@@ -48,6 +49,16 @@ export const REGISTRY_COLUMNS = [
   { key: 'category', header: 'mail.category', value: (row) => row.category ?? '' },
   { key: 'assigned_officer_id', header: 'mail.assignedOfficer', value: (row) => row.assigned_officer?.full_name ?? '' },
   { key: 'receipt_date', header: 'mail.received', value: (row) => formatDate(row.receipt_date) },
+  // Signed on paper, not data: the assigned officer signs each line to confirm
+  // they received the letter from the system. Kept out of the CSV export, where
+  // a blank column would mean nothing.
+  {
+    key: 'signature',
+    header: 'print.signature',
+    value: () => '',
+    className: 'registry-print-signature',
+    printOnly: true,
+  },
 ];
 
 /** One CSV field. A field containing a comma, quote or newline is quoted, and an inner quote is doubled (RFC 4180). */
@@ -64,9 +75,10 @@ function csvCell(value) {
  * and Tamil correctly.
  */
 export function registryCsv(rows, t, { bom = true } = {}) {
+  const columns = REGISTRY_COLUMNS.filter((column) => !column.printOnly);
   const lines = [
-    REGISTRY_COLUMNS.map((column) => t(column.header)),
-    ...rows.map((row) => REGISTRY_COLUMNS.map((column) => column.value(row))),
+    columns.map((column) => t(column.header)),
+    ...rows.map((row) => columns.map((column) => column.value(row))),
   ];
   const text = lines.map((cells) => cells.map(csvCell).join(',')).join('\r\n');
   return bom ? `\uFEFF${text}` : text;

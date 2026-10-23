@@ -33,7 +33,11 @@ export const SENDER_TYPES = Object.freeze([
 
 export const PRIORITIES = Object.freeze(['Normal', 'Urgent', 'Confidential']);
 
-export const PAGE_SIZE = 25;
+/** Rows shown on the registry before the user asks for more. */
+export const PAGE_SIZE = 20;
+
+/** The rows-per-page choices. `'all'` fetches the whole filtered result set. */
+export const PAGE_SIZE_OPTIONS = Object.freeze([20, 50, 100, 'all']);
 
 /** Every filter the registry accepts, empty. */
 export const BLANK_FILTERS = Object.freeze({

@@ -8,7 +8,7 @@ export async function list(filters = {}, paging = {}, options = {}) {
     .from('mail_records')
     .select(`
       *,
-      created_by:profiles!created_by_user_id(nic_no,full_name,email,role,department_id,designation,section_name),
+      created_by:profiles!created_by_user_id(nic_no,full_name,email,role,department_id,designation,section_name,is_central_clerk),
       assigned_officer:profiles!assigned_officer_id(nic_no,full_name,email,role,department_id,designation,section_name),
       department:departments(id,name,code)
     `, { count: 'exact' });
@@ -32,9 +32,13 @@ export async function list(filters = {}, paging = {}, options = {}) {
     query = query.eq('department_id', options.departmentId);
   }
 
-  const sortBy = filters.sort_by || 'created_at';
-  const sortDir = filters.sort_dir === 'asc' ? false : true;
-  query = query.order(sortBy, { ascending: sortDir });
+  // Sort is server-side so it applies to the WHOLE result set, not just the
+  // rows on the current page. `paging.sort` is the table's current column choice;
+  // without one the registry keeps its own default, newest letter first.
+  const chosen = paging.sort ?? null;
+  const sortBy = chosen?.key || filters.sort_by || 'created_at';
+  const ascending = chosen ? chosen.direction === 'asc' : filters.sort_dir === 'asc';
+  query = query.order(sortBy, { ascending });
 
   const { data, error, count } = await query.range(offset, offset + limit - 1);
   if (error) throw error;
@@ -44,7 +48,7 @@ export async function list(filters = {}, paging = {}, options = {}) {
 /**
  * Every row the filters match, for an export rather than a page.
  *
- * The registry shows 25 rows, but a printout and a CSV are asked to hold the
+ * The registry shows a page at a time, but a printout and a CSV are asked to hold the
  * whole result set, so this pages through `list` until the rows run out.
  *
  * The loop stops on the FIRST short page, not on `total`: PostgREST caps rows
@@ -53,11 +57,11 @@ export async function list(filters = {}, paging = {}, options = {}) {
  * a short page is the only signal that is reliable across a stripped `count`.
  * Checking `total` as well keeps a capped server from looping forever.
  */
-export async function listAll(filters = {}, options = {}, pageSize = 500) {
+export async function listAll(filters = {}, options = {}, pageSize = 500, sort = null) {
   const rows = [];
   let offset = 0;
   for (;;) {
-    const page = await list(filters, { limit: pageSize, offset }, options);
+    const page = await list(filters, { limit: pageSize, offset, sort }, options);
     const batch = page.rows ?? [];
     rows.push(...batch);
     offset += pageSize;
@@ -85,7 +89,7 @@ export async function getById(id) {
     .from('mail_records')
     .select(`
       *,
-      created_by:profiles!created_by_user_id(nic_no,full_name,email,role,department_id,designation,section_name),
+      created_by:profiles!created_by_user_id(nic_no,full_name,email,role,department_id,designation,section_name,is_central_clerk),
       assigned_officer:profiles!assigned_officer_id(nic_no,full_name,email,role,department_id,designation,section_name),
       department:departments(id,name,code),
       minutes:official_minutes(*),

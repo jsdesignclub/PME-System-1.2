@@ -630,7 +630,7 @@ body {
      The registry printout (the "Print / Save as PDF" button, and Ctrl+P on
      the registry). Same reasoning as the slip: black on white, nothing that
      belongs only to the screen. Drawn in the shared A4 portrait page box, so
-     the nine columns are tight on purpose — a smaller type and tighter cell
+     the ten columns are tight on purpose — a smaller type and tighter cell
      padding buy the width back without asking the clerk to read landscape.
      ---------------------------------------------------------------------- */
   .registry-print {
@@ -721,6 +721,19 @@ body {
   .registry-print-table tr {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+
+  /* The last column is signed by hand: the assigned officer confirms, on the
+     filed sheet, that they received the letter from the system. */
+  .registry-print-signature {
+    width: 24mm;
+    min-width: 24mm;
+  }
+
+  .registry-print-signature-line {
+    display: block;
+    min-height: 5mm;
+    border-bottom: 0.5pt solid #000;
   }
 
   .registry-print-footer {
