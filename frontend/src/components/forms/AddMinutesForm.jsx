@@ -29,8 +29,9 @@
  *
  *   * the MAIN (central) clerk, for a ministry letter: the AO/Secretary (or a
  *     Chief Clerk/Admin) who wrote it;
- *   * a BRANCH clerk, for a letter that arrived straight at their branch: their
- *     own Department Head — the branch endorses its own mail, not the AO.
+ *   * a BRANCH clerk, for a letter that arrived straight at their branch — or a
+ *     minuted letter the branch sent back to its head for a second minute:
+ *     their own Department Head, not the AO.
  *
  * In both cases the clerk selects the author, may add a quick note, and the
  * minute is recorded in that person's name with recorded_by_user_id set to the
@@ -155,17 +156,13 @@ export function AddMinutesForm({ letterId, departmentId: currentDepartmentId, on
       payload.author_role = selectedAuthor.role;
       payload.author_name = selectedAuthor.full_name;
     }
-    console.log('AddMinutesForm: submitting', payload);
     const saved = await run(() => mailApi.addMinutes(letterId, payload));
     setBusy(false);
 
     if (saved) {
-      console.log('AddMinutesForm: saved successfully');
       setText('');
       setQuickNote('');
       onSaved();
-    } else {
-      console.log('AddMinutesForm: save failed, failure state set');
     }
   }
 

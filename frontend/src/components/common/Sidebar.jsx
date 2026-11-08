@@ -95,6 +95,7 @@ import {
   LogOut,
   ShieldCheck,
   Truck,
+  User,
   Users,
   X,
 } from 'lucide-react';
@@ -114,8 +115,12 @@ import { Emblem } from './Header.jsx';
  */
 const LIVE_ITEMS = [
   { to: '/', labelKey: 'nav.dashboard', end: true, permission: null, icon: LayoutDashboard },
+  { to: '/profile', labelKey: 'nav.myProfile', permission: null, icon: User },
   { to: '/mail', labelKey: 'nav.registry', permission: null, icon: Inbox },
-  { to: '/officers', labelKey: 'nav.officers', permission: null, icon: Users },
+  // Administrators plus the people they grant `can_view_officers` to. The route
+  // guard in App.jsx enforces the same rule; hiding the link keeps everyone else
+  // from being offered a page that would bounce them.
+  { to: '/officers', labelKey: 'nav.officers', officerDirectory: true, icon: Users },
   // Either authority admits the page; `AdminPage` then hides the tabs the visitor
   // would get a 403 on. See the note in App.jsx's RequireAdminArea.
   { to: '/admin', labelKey: 'nav.admin', adminArea: true, icon: ShieldCheck },
@@ -162,7 +167,7 @@ export function Sidebar({
   panelRef,
   id = 'app-sidebar',
 }) {
-  const { hasPermission, user, signOut } = useAuth();
+  const { hasPermission, user, signOut, canViewOfficers } = useAuth();
   const { t } = useLanguage();
   const isAdmin = ADMIN_ROLES.includes(user?.role);
   const navigate = useNavigate();
@@ -173,6 +178,7 @@ export function Sidebar({
   const hideWhenCollapsed = collapsed ? 'lg:hidden' : '';
 
   const items = LIVE_ITEMS.filter((item) => {
+    if (item.officerDirectory) return canViewOfficers;
     if (item.adminArea) return isAdmin || hasPermission('UPDATE_DUTY_CHART');
     return !item.permission || hasPermission(item.permission);
   });

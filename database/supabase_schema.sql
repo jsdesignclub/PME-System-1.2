@@ -40,6 +40,10 @@ CREATE TABLE public.profiles (
   -- A SUBJECT_CLERK flagged as the central intake clerk handles intake for every
   -- department, not just their own (see is_central_clerk()).
   is_central_clerk BOOLEAN NOT NULL DEFAULT FALSE,
+  -- Grants the Officers directory and the HR files behind it. ADMIN always has
+  -- access; this switch is how an administrator lets anyone else in (see
+  -- can_view_officers()).
+  can_view_officers BOOLEAN NOT NULL DEFAULT FALSE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -47,6 +51,184 @@ CREATE TABLE public.profiles (
 CREATE UNIQUE INDEX uq_profiles_nic ON public.profiles(nic_no);
 CREATE UNIQUE INDEX uq_profiles_email ON public.profiles(email);
 CREATE INDEX idx_profiles_role ON public.profiles(role);
+
+-- ============================================================================
+-- employee_details — the HR basic-information block, one row per profile
+-- ============================================================================
+-- `profiles` is identity and posting; this table holds the fields an HR file
+-- needs that the mail workflow never reads. Keeping them apart means every
+-- user list and every RLS check on `profiles` stays as narrow as it was. The
+-- row is optional: an officer with no HR details has no row, and the UI treats
+-- that as "not recorded" rather than as an error.
+--
+-- Qualifications, experience and service history are separate child tables
+-- keyed on the same officer_user_id; this table is only basic information.
+CREATE TABLE public.employee_details (
+  officer_user_id          UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
+  date_of_birth            DATE NULL,
+  gender                   TEXT NULL,
+  marital_status           TEXT NULL,
+  nationality              TEXT NULL DEFAULT 'Sri Lankan',
+  permanent_address        TEXT NULL,
+  residential_address      TEXT NULL,
+  phone                    TEXT NULL,
+  personal_email           TEXT NULL,
+  join_date                DATE NULL,
+  confirmation_date        DATE NULL,
+  retirement_date          DATE NULL,
+  employment_type          TEXT NULL,
+  service_grade            TEXT NULL,
+  salary_scale             TEXT NULL,
+  blood_group              TEXT NULL,
+  emergency_contact_name   TEXT NULL,
+  emergency_contact_phone  TEXT NULL,
+  notes                    TEXT NULL,
+  created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- The primary key is the foreign key: a profile has at most one HR row, and an
+-- HR row cannot exist without its profile. CASCADE is correct for the same
+-- reason officer_duties uses it — the record is ABOUT a person.
+CREATE OR REPLACE FUNCTION public.set_employee_details_updated_at()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_employee_details_updated_at
+BEFORE UPDATE ON public.employee_details
+FOR EACH ROW
+EXECUTE FUNCTION public.set_employee_details_updated_at();
+
+-- ============================================================================
+-- employee_qualifications — academic and professional qualifications (1:N)
+-- ============================================================================
+-- A person may hold several qualifications, so this is a child list rather
+-- than columns on the profile. Ordered by year when read, because the HR file
+-- is read as a history.
+CREATE TABLE public.employee_qualifications (
+  id               SERIAL PRIMARY KEY,
+  officer_user_id  UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  level            TEXT NULL,
+  title            TEXT NOT NULL,
+  institution      TEXT NULL,
+  year_completed   INT NULL,
+  grade            TEXT NULL,
+  -- Reserved for the documents phase; NULL until then.
+  certificate_path TEXT NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_employee_qualifications_officer
+  ON public.employee_qualifications(officer_user_id);
+
+-- ============================================================================
+-- employee_experience — previous employment (1:N)
+-- ============================================================================
+-- A NULL `to_date` means "current": the person still works there. That is a
+-- different fact from an unknown end date, and the UI renders it as "Current".
+CREATE TABLE public.employee_experience (
+  id               SERIAL PRIMARY KEY,
+  officer_user_id  UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  employer         TEXT NOT NULL,
+  designation      TEXT NULL,
+  from_date        DATE NULL,
+  to_date          DATE NULL,
+  description      TEXT NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT chk_employee_experience_dates
+    CHECK (from_date IS NULL OR to_date IS NULL OR to_date >= from_date)
+);
+
+CREATE INDEX idx_employee_experience_officer
+  ON public.employee_experience(officer_user_id, from_date DESC);
+
+CREATE OR REPLACE FUNCTION public.set_employee_record_updated_at()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_employee_qualifications_updated_at
+BEFORE UPDATE ON public.employee_qualifications
+FOR EACH ROW
+EXECUTE FUNCTION public.set_employee_record_updated_at();
+
+CREATE TRIGGER trg_employee_experience_updated_at
+BEFORE UPDATE ON public.employee_experience
+FOR EACH ROW
+EXECUTE FUNCTION public.set_employee_record_updated_at();
+
+-- ============================================================================
+-- employee_service_history — postings, promotions and transfers (1:N)
+-- ============================================================================
+-- The officer's life inside the ministry, as opposed to `employee_experience`,
+-- which records employment elsewhere. `workplace` and `grade` are text rather
+-- than a foreign key to `departments`: a history row must keep the name the
+-- office used at the time, even if the department is later renamed or removed.
+CREATE TABLE public.employee_service_history (
+  id               SERIAL PRIMARY KEY,
+  officer_user_id  UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  designation      TEXT NOT NULL,
+  workplace        TEXT NULL,
+  grade            TEXT NULL,
+  from_date        DATE NULL,
+  to_date          DATE NULL,
+  remarks          TEXT NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT chk_employee_service_history_dates
+    CHECK (from_date IS NULL OR to_date IS NULL OR to_date >= from_date)
+);
+
+CREATE INDEX idx_employee_service_history_officer
+  ON public.employee_service_history(officer_user_id, from_date DESC);
+
+CREATE TRIGGER trg_employee_service_history_updated_at
+BEFORE UPDATE ON public.employee_service_history
+FOR EACH ROW
+EXECUTE FUNCTION public.set_employee_record_updated_at();
+
+-- ============================================================================
+-- employee_documents — certificates, appointment letters and other scans (1:N)
+-- ============================================================================
+-- The metadata row names an object in the private `employee-documents` bucket.
+-- The bytes are never in the table: `file_path` is a storage key, and every
+-- download goes through an authenticated storage request. `uploaded_by` is
+-- nullable and ON DELETE SET NULL so a document survives the departure of the
+-- clerk who filed it.
+CREATE TABLE public.employee_documents (
+  id               SERIAL PRIMARY KEY,
+  officer_user_id  UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  title            TEXT NOT NULL,
+  document_type    TEXT NULL,
+  file_path        TEXT NOT NULL,
+  file_name        TEXT NOT NULL,
+  mime_type        TEXT NULL,
+  size_bytes       BIGINT NULL,
+  uploaded_by      UUID NULL REFERENCES public.profiles(id) ON DELETE SET NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_employee_documents_officer
+  ON public.employee_documents(officer_user_id, created_at DESC);
+
+CREATE TRIGGER trg_employee_documents_updated_at
+BEFORE UPDATE ON public.employee_documents
+FOR EACH ROW
+EXECUTE FUNCTION public.set_employee_record_updated_at();
 
 -- ============================================================================
 -- senders — the reusable directory of letter senders
@@ -288,6 +470,15 @@ VALUES ('mail-attachments', 'mail-attachments', false, 10485760, ARRAY['applicat
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================================
+-- Storage bucket for HR documents
+-- ============================================================================
+-- Same private bucket rules as mail attachments: 10 MB, extension-derived MIME
+-- types. Existing installs get the bucket from patch_hrm.sql.
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('employee-documents', 'employee-documents', false, 10485760, ARRAY['application/pdf','image/jpeg','image/jpg','image/png','image/gif','image/tiff','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document'])
+ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================================
 -- Helper function: generate day stamp
 -- ============================================================================
 CREATE OR REPLACE FUNCTION public.next_day_stamp(p_year_month TEXT)
@@ -375,9 +566,10 @@ BEGIN
     --   * 'AO' (or NULL, for letters logged before the marker existed) — a
     --     MINISTRY letter. The AO writes it (or an oversight role), and the
     --     MAIN (central) clerk may type it on their behalf.
-    --   * 'DEPARTMENT_HEAD' — a letter that arrived straight at a BRANCH. Its
-    --     own head writes it and the branch clerk types it. The AO is not
-    --     involved and does not get the action.
+    --   * 'DEPARTMENT_HEAD' — a letter that arrived straight at a BRANCH, or a
+    --     minuted letter the branch clerk sent back to its head for a second
+    --     minute. Its own head writes it and the branch clerk types it. The AO
+    --     is not involved and does not get the action.
     IF v_profile.role IN ('ADMIN','SECRETARY','CHIEF_CLERK') THEN
       v_perms := array_append(v_perms, 'add_minutes');
     ELSIF v_profile.role = 'AO'
@@ -388,15 +580,59 @@ BEGIN
                 AND COALESCE(v_record.endorser_role, 'AO') = 'AO')
                OR (COALESCE(v_record.endorser_role, 'AO') = 'DEPARTMENT_HEAD'
                    AND v_record.department_id = v_profile.department_id)) THEN
-      -- Only allow if no minute has been added yet (by anyone) to prevent duplicates
-      IF NOT EXISTS (SELECT 1 FROM public.official_minutes om WHERE om.mail_record_id = p_mail_id) THEN
-        v_perms := array_append(v_perms, 'add_minutes');
+      IF v_profile.is_central_clerk THEN
+        -- A ministry letter carries ONE AO minute. The central clerk may type
+        -- it, never a second one.
+        IF NOT EXISTS (
+          SELECT 1 FROM public.official_minutes om WHERE om.mail_record_id = p_mail_id
+        ) THEN
+          v_perms := array_append(v_perms, 'add_minutes');
+        END IF;
+      ELSE
+        -- A branch letter carries ONE minute by THAT branch's head. An AO
+        -- minute (or a minute by another branch) does not block it: that is
+        -- exactly the second-minute case. A minute already written by this
+        -- branch's own head does block a duplicate.
+        IF NOT EXISTS (
+          SELECT 1
+          FROM public.official_minutes om
+          JOIN public.profiles a ON a.id = om.author_user_id
+          WHERE om.mail_record_id = p_mail_id
+            AND a.role = 'DEPARTMENT_HEAD'
+            AND a.department_id = v_record.department_id
+        ) THEN
+          v_perms := array_append(v_perms, 'add_minutes');
+        END IF;
       END IF;
     END IF;
   ELSIF v_record.status::text = 'Forwarded to Subject' THEN
     -- The clerk routes it to an officer. The AO does not assign.
     IF v_profile.role IN ('SUBJECT_CLERK','ADMIN','SECRETARY','CHIEF_CLERK') THEN
       v_perms := array_append(v_perms, 'assign');
+    END IF;
+
+    -- The branch clerk may hand the letter back to their own head for a new
+    -- minute. Offered only when the letter has been minuted at least once (it
+    -- has, by definition, at this status) and this branch has not put its own
+    -- head's minute on it yet. The head may have already minuted a letter that
+    -- arrived straight at the branch, in which case there is nothing new to
+    -- say and the button is withheld.
+    IF v_profile.role = 'SUBJECT_CLERK'
+       AND v_profile.is_central_clerk IS NOT TRUE
+       AND v_record.department_id IS NOT NULL
+       AND v_record.department_id = v_profile.department_id
+       AND EXISTS (
+         SELECT 1 FROM public.official_minutes om WHERE om.mail_record_id = p_mail_id
+       )
+       AND NOT EXISTS (
+         SELECT 1
+         FROM public.official_minutes om
+         JOIN public.profiles a ON a.id = om.author_user_id
+         WHERE om.mail_record_id = p_mail_id
+           AND a.role = 'DEPARTMENT_HEAD'
+           AND a.department_id = v_record.department_id
+       ) THEN
+      v_perms := array_append(v_perms, 'send_to_branch_head');
     END IF;
   ELSIF v_record.status::text = 'Assigned' THEN
     -- `start` belongs to the person the letter is ASSIGNED TO, and to nobody
@@ -881,6 +1117,11 @@ GRANT USAGE, SELECT ON SEQUENCE public.notifications_id_seq TO authenticated;
 -- Enable RLS on all tables
 -- ============================================================================
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.employee_details ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.employee_qualifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.employee_experience ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.employee_service_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.employee_documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.departments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.senders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.letter_categories ENABLE ROW LEVEL SECURITY;
@@ -922,9 +1163,60 @@ AS $$
   );
 $$;
 
+-- Helper: may the signed-in user open the Officers directory? Administrators
+-- always can; everyone else needs the per-profile grant an administrator sets.
+CREATE OR REPLACE FUNCTION public.can_view_officers()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT COALESCE(
+    (SELECT role = 'ADMIN' OR can_view_officers
+       FROM public.profiles WHERE id = auth.uid()),
+    FALSE
+  );
+$$;
+
 -- profiles: authenticated users read all; admins write
 CREATE POLICY profiles_read ON public.profiles FOR SELECT TO authenticated USING (true);
 CREATE POLICY profiles_admin_write ON public.profiles FOR ALL TO authenticated USING (is_admin());
+
+-- employee_details: read is scoped to the employee themselves, an administrator,
+-- or anyone the administrator has granted the Officers directory; admin OR the
+-- employee themselves may write.
+CREATE POLICY employee_details_read ON public.employee_details FOR SELECT TO authenticated
+  USING (public.can_view_officers() OR officer_user_id = auth.uid());
+CREATE POLICY employee_details_write ON public.employee_details FOR ALL TO authenticated
+  USING (is_admin() OR officer_user_id = auth.uid())
+  WITH CHECK (is_admin() OR officer_user_id = auth.uid());
+
+-- employee_qualifications / employee_experience: the employee themselves, an
+-- administrator, or a directory-granted user may read; only the first two write.
+CREATE POLICY employee_qualifications_read ON public.employee_qualifications FOR SELECT TO authenticated
+  USING (public.can_view_officers() OR officer_user_id = auth.uid());
+CREATE POLICY employee_qualifications_write ON public.employee_qualifications FOR ALL TO authenticated
+  USING (is_admin() OR officer_user_id = auth.uid())
+  WITH CHECK (is_admin() OR officer_user_id = auth.uid());
+
+CREATE POLICY employee_experience_read ON public.employee_experience FOR SELECT TO authenticated
+  USING (public.can_view_officers() OR officer_user_id = auth.uid());
+CREATE POLICY employee_experience_write ON public.employee_experience FOR ALL TO authenticated
+  USING (is_admin() OR officer_user_id = auth.uid())
+  WITH CHECK (is_admin() OR officer_user_id = auth.uid());
+
+CREATE POLICY employee_service_history_read ON public.employee_service_history FOR SELECT TO authenticated
+  USING (public.can_view_officers() OR officer_user_id = auth.uid());
+CREATE POLICY employee_service_history_write ON public.employee_service_history FOR ALL TO authenticated
+  USING (is_admin() OR officer_user_id = auth.uid())
+  WITH CHECK (is_admin() OR officer_user_id = auth.uid());
+
+-- employee_documents: the employee themselves, an administrator, or a
+-- directory-granted user may read; only the first two write.
+CREATE POLICY employee_documents_read ON public.employee_documents FOR SELECT TO authenticated
+  USING (public.can_view_officers() OR officer_user_id = auth.uid());
+CREATE POLICY employee_documents_write ON public.employee_documents FOR ALL TO authenticated
+  USING (is_admin() OR officer_user_id = auth.uid())
+  WITH CHECK (is_admin() OR officer_user_id = auth.uid());
 
 -- departments: read for all authenticated; admin write
 CREATE POLICY departments_read ON public.departments FOR SELECT TO authenticated USING (true);
@@ -1139,7 +1431,8 @@ CREATE POLICY minutes_write ON public.official_minutes FOR INSERT TO authenticat
     )
   )
   -- OR a BRANCH subject clerk enters it on behalf of their OWN branch head.
-  -- A letter that arrives straight at a branch is endorsed by that branch's
+  -- A letter that arrives straight at a branch — or that the branch clerk sends
+  -- back to the head for a second minute — is endorsed by that branch's
   -- Department Head, not by the ministry AO: the branch clerk types what the
   -- head wrote on the paper, and the minute carries the head's name.
   OR (
@@ -1154,7 +1447,16 @@ CREATE POLICY minutes_write ON public.official_minutes FOR INSERT TO authenticat
         AND p.department_id = m.department_id
         AND m.status::text = 'Forwarded to AO'
         AND COALESCE(m.endorser_role, 'AO') = 'DEPARTMENT_HEAD'
-        AND NOT EXISTS (SELECT 1 FROM public.official_minutes om2 WHERE om2.mail_record_id = m.id)
+        -- Only ONE minute by THIS branch's head. Minutes by the AO, or by
+        -- another branch's head, are allowed to precede it.
+        AND NOT EXISTS (
+          SELECT 1
+          FROM public.official_minutes om2
+          JOIN public.profiles a2 ON a2.id = om2.author_user_id
+          WHERE om2.mail_record_id = m.id
+            AND a2.role = 'DEPARTMENT_HEAD'
+            AND a2.department_id = m.department_id
+        )
         AND a.role = 'DEPARTMENT_HEAD'
         AND a.department_id = m.department_id
         -- Same rule as above: the clerk may NAME the author, but may not
@@ -1225,6 +1527,53 @@ CREATE POLICY notifications_read ON public.notifications FOR SELECT TO authentic
 CREATE POLICY notifications_update ON public.notifications FOR UPDATE TO authenticated
   USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
 CREATE POLICY notifications_delete ON public.notifications FOR DELETE TO authenticated USING (user_id = auth.uid());
+
+-- ============================================================================
+-- Storage policies for the private HR documents bucket
+-- ============================================================================
+-- Placed after `is_admin()` is defined. Read is scoped to the owner (the first
+-- path segment), an administrator, or a directory-granted user; insert/update/
+-- delete stay with the owner or an administrator (see
+-- database/patch_officer_directory_access.sql).
+DROP POLICY IF EXISTS "employee_documents_insert" ON storage.objects;
+DROP POLICY IF EXISTS "employee_documents_select" ON storage.objects;
+DROP POLICY IF EXISTS "employee_documents_update" ON storage.objects;
+DROP POLICY IF EXISTS "employee_documents_delete" ON storage.objects;
+
+CREATE POLICY "employee_documents_insert" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    bucket_id = 'employee-documents'
+    AND (public.is_admin() OR split_part(name, '/', 1) = auth.uid()::text)
+  );
+
+CREATE POLICY "employee_documents_select" ON storage.objects
+  FOR SELECT TO authenticated
+  USING (
+    bucket_id = 'employee-documents'
+    AND (
+      public.can_view_officers()
+      OR split_part(name, '/', 1) = auth.uid()::text
+    )
+  );
+
+CREATE POLICY "employee_documents_update" ON storage.objects
+  FOR UPDATE TO authenticated
+  USING (
+    bucket_id = 'employee-documents'
+    AND (public.is_admin() OR split_part(name, '/', 1) = auth.uid()::text)
+  )
+  WITH CHECK (
+    bucket_id = 'employee-documents'
+    AND (public.is_admin() OR split_part(name, '/', 1) = auth.uid()::text)
+  );
+
+CREATE POLICY "employee_documents_delete" ON storage.objects
+  FOR DELETE TO authenticated
+  USING (
+    bucket_id = 'employee-documents'
+    AND (public.is_admin() OR split_part(name, '/', 1) = auth.uid()::text)
+  );
 
 -- ============================================================================
 -- Seed data: admin user (password must be set via Supabase Auth UI or signup)

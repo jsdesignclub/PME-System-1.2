@@ -16,6 +16,7 @@ export async function list(filters = {}, paging = {}) {
       section_name,
       is_active,
       is_central_clerk,
+      can_view_officers,
       created_at,
       updated_at,
       department:departments!department_id(id,name,code)
@@ -53,6 +54,7 @@ export async function getById(id) {
       section_name,
       is_active,
       is_central_clerk,
+      can_view_officers,
       created_at,
       updated_at,
       department:departments!department_id(id,name,code)
@@ -139,6 +141,7 @@ export async function createProfile(fields) {
       department_id: fields.department_id ?? null,
       section_name: fields.section_name || null,
       is_central_clerk: fields.is_central_clerk === true,
+      can_view_officers: fields.can_view_officers === true,
       is_active: true,
     })
     .select()
@@ -149,7 +152,7 @@ export async function createProfile(fields) {
 
 export async function update(id, fields) {
   const updates = {};
-  const allowed = ['full_name','email','role','department_id','designation','section_name','is_active','is_central_clerk'];
+  const allowed = ['full_name','email','role','department_id','designation','section_name','is_active','is_central_clerk','can_view_officers'];
   for (const key of allowed) {
     if (fields[key] !== undefined) updates[key] = fields[key];
   }

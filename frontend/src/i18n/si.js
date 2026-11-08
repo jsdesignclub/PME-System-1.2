@@ -46,6 +46,7 @@ export const si = Object.freeze({
 
   // --- Navigation ----------------------------------------------------------
   'nav.dashboard': 'කළමනාකරණ පුවරුව',
+  'nav.myProfile': 'මගේ පැතිකඩ',
   'nav.registry': 'ලිපි ලැයිස්තුව',
   'nav.officers': 'නිලධාරීන්',
   'nav.admin': 'පරිපාලනය',
@@ -79,6 +80,7 @@ export const si = Object.freeze({
   'common.cancel': 'අවලංගු කරන්න',
   'common.delete': 'මකන්න',
   'common.edit': 'සංස්කරණය කරන්න',
+  'common.download': 'බාගන්න',
   'common.add': 'එකතු කරන්න',
   'common.close': 'වසන්න',
   'common.apply': 'යොදන්න',
@@ -257,6 +259,121 @@ export const si = Object.freeze({
   'officer.noDutyRows': 'මෙම නිලධාරීගේ කාර්ය පේළි නොමැති නිසා ගැලපිය නොහැක.',
   'officer.duties': 'කාර්ය',
   'officer.dutyChart': 'කාර්ය සටහන',
+  'officers.profileTab': 'සේවක පැතිකඩ',
+  'officers.qualificationsTab': 'සුදුසුකම්',
+  'officers.experienceTab': 'පෙර සේවා අත්දැකීම්',
+  'officers.serviceHistoryTab': 'සේවා ඉතිහාසය',
+  'officers.documentsTab': 'ලේඛන',
+  'officers.dutyChartTab': 'කාර්ය සටහන',
+  'officers.profileTitle': 'සේවක පැතිකඩ',
+  'officers.loadingProfile': 'සේවක තොරතුරු පූරණය වෙමින්',
+  'officers.profileEmpty': 'මෙම නිලධාරී සඳහා තවමත් මානව සම්පත් තොරතුරු සටහන් කර නොමැත.',
+
+  // --- Employee HR details -------------------------------------------------
+  'employee.dateOfBirth': 'උපන් දිනය',
+  'employee.gender': 'ස්ත්‍රී/පුරුෂ භාවය',
+  'employee.maritalStatus': 'විවාහ තත්ත්වය',
+  'employee.nationality': 'ජාතිකත්වය',
+  'employee.bloodGroup': 'රුධිර කාණ්ඩය',
+  'employee.phone': 'දුරකථන අංකය',
+  'employee.personalEmail': 'පුද්ගලික ඊමේල්',
+  'employee.employmentType': 'සේවා වර්ගය',
+  'employee.joinDate': 'සේවයට එක් වූ දිනය',
+  'employee.confirmationDate': 'සේවය තහවුරු වූ දිනය',
+  'employee.retirementDate': 'විශ්‍රාම යන දිනය',
+  'employee.serviceGrade': 'සේවා ශ්‍රේණිය',
+  'employee.salaryScale': 'වැටුප් පරිමාණය',
+  'employee.emergencyContactName': 'හදිසි අවස්ථා සම්බන්ධතාවය',
+  'employee.emergencyContactPhone': 'හදිසි අවස්ථා දුරකථන අංකය',
+  'employee.permanentAddress': 'ස්ථිර ලිපිනය',
+  'employee.residentialAddress': 'පදිංචි ලිපිනය',
+  'employee.notes': 'සටහන්',
+  'employee.profileHint': 'ඔබගේ මූලික පුද්ගලික සහ සේවා තොරතුරු.',
+  'employee.editDetails': 'තොරතුරු සංස්කරණය කරන්න',
+  'employee.addDetails': 'තොරතුරු එකතු කරන්න',
+  'employee.detailsUpdated': 'සේවක තොරතුරු සුරකින ලදී.',
+
+  // --- Qualifications and experience ---------------------------------------
+  'employee.qualifications': 'සුදුසුකම්',
+  'employee.qualificationsHint': 'මෙම නිලධාරියා සතු අධ්‍යාපනික හා වෘත්තීය සුදුසුකම්.',
+  'employee.addQualification': 'සුදුසුකමක් එකතු කරන්න',
+  'employee.editQualification': 'සුදුසුකම සංස්කරණය කරන්න',
+  'employee.noQualifications': 'සුදුසුකම් සටහන් කර නොමැත.',
+  'employee.qualificationAdded': 'සුදුසුකම එකතු කරන ලදී.',
+  'employee.qualificationUpdated': 'සුදුසුකම යාවත්කාලීන කරන ලදී.',
+  'employee.qualificationRemoved': 'සුදුසුකම ඉවත් කරන ලදී.',
+  'employee.deleteQualificationTitle': 'සුදුසුකම ඉවත් කරන්න',
+  'employee.deleteQualificationMessage':
+    '"{title}" සුදුසුකම ඉවත් කරන්නද? මෙය නැවත ප්‍රතිස්ථාපනය කළ නොහැක.',
+  'employee.level': 'මට්ටම',
+  'employee.title': 'සුදුසුකම',
+  'employee.titleRequired': 'සුදුසුකමේ නම ඇතුළත් කරන්න.',
+  'employee.institution': 'ආයතනය',
+  'employee.yearCompleted': 'සම්පූර්ණ කළ වර්ෂය',
+  'employee.grade': 'ශ්‍රේණිය',
+
+  'employee.experience': 'පෙර සේවා අත්දැකීම්',
+  'employee.experienceHint': 'පෙර සේවා යෝජකයන් සහ සේවය කළ කාල පරිච්ඡේද.',
+  'employee.addExperience': 'සේවා අත්දැකීමක් එකතු කරන්න',
+  'employee.editExperience': 'සේවා අත්දැකීම සංස්කරණය කරන්න',
+  'employee.noExperience': 'පෙර සේවා අත්දැකීම් සටහන් කර නොමැත.',
+  'employee.experienceAdded': 'සේවා අත්දැකීම එකතු කරන ලදී.',
+  'employee.experienceUpdated': 'සේවා අත්දැකීම යාවත්කාලීන කරන ලදී.',
+  'employee.experienceRemoved': 'සේවා අත්දැකීම ඉවත් කරන ලදී.',
+  'employee.deleteExperienceTitle': 'සේවා අත්දැකීම ඉවත් කරන්න',
+  'employee.deleteExperienceMessage':
+    '"{employer}" හි සේවා අත්දැකීම ඉවත් කරන්නද? මෙය නැවත ප්‍රතිස්ථාපනය කළ නොහැක.',
+  'employee.employer': 'සේවා යෝජකයා',
+  'employee.employerRequired': 'සේවා යෝජකයාගේ නම ඇතුළත් කරන්න.',
+  'employee.jobTitle': 'තනතුර',
+  'employee.period': 'කාල පරිච්ඡේදය',
+  'employee.fromDate': 'සිට',
+  'employee.toDate': 'දක්වා',
+  'employee.toDateHint': 'වර්තමාන සේවා යෝජකයා නම් හිස්ව තබන්න.',
+  'employee.current': 'වර්තමාන',
+  'employee.dateOrder': 'අවසන් දිනය ආරම්භක දිනයට පෙර විය නොහැක.',
+  'employee.description': 'විස්තරය',
+  'employee.readOnly': 'මානව සම්පත් වාර්තා වෙනස් කළ හැක්කේ පරිපාලකයෙකුට හෝ අදාළ සේවකයාට පමණි.',
+
+  'employee.serviceHistory': 'සේවා ඉතිහාසය',
+  'employee.serviceHistoryHint': 'අමාත්‍යාංශය තුළ පත්වීම්, උසස්වීම් සහ මාරුවීම්.',
+  'employee.addServiceRecord': 'සේවා වාර්තාවක් එකතු කරන්න',
+  'employee.editServiceRecord': 'සේවා වාර්තාව සංස්කරණය කරන්න',
+  'employee.noServiceHistory': 'සේවා ඉතිහාසය සටහන් කර නොමැත.',
+  'employee.serviceRecordAdded': 'සේවා වාර්තාව එකතු කරන ලදී.',
+  'employee.serviceRecordUpdated': 'සේවා වාර්තාව යාවත්කාලීන කරන ලදී.',
+  'employee.serviceRecordRemoved': 'සේවා වාර්තාව ඉවත් කරන ලදී.',
+  'employee.deleteServiceRecordTitle': 'සේවා වාර්තාව ඉවත් කරන්න',
+  'employee.deleteServiceRecordMessage':
+    '"{designation}" සඳහා සේවා වාර්තාව ඉවත් කරන්නද? මෙය නැවත ප්‍රතිස්ථාපනය කළ නොහැක.',
+  'employee.designation': 'තනතුර',
+  'employee.designationRequired': 'තනතුර ඇතුළත් කරන්න.',
+  'employee.workplace': 'සේවා ස්ථානය',
+  'employee.remarks': 'සටහන්',
+
+  'employee.documents': 'ලේඛන',
+  'employee.documentsHint': 'සහතික, පත්වීම් ලිපි සහ වෙනත් පරිලෝකන.',
+  'employee.addDocument': 'ලේඛනයක් එකතු කරන්න',
+  'employee.noDocuments': 'ලේඛන උඩුගත කර නොමැත.',
+  'employee.documentUploaded': 'ලේඛනය උඩුගත කරන ලදී.',
+  'employee.documentRemoved': 'ලේඛනය ඉවත් කරන ලදී.',
+  'employee.deleteDocumentTitle': 'ලේඛනය ඉවත් කරන්න',
+  'employee.deleteDocumentMessage':
+    '"{title}" ලේඛනය ඉවත් කරන්නද? මෙය නැවත ප්‍රතිස්ථාපනය කළ නොහැක.',
+  'employee.documentTitle': 'ලේඛනයේ නම',
+  'employee.documentType': 'ලේඛන වර්ගය',
+  'employee.documentFile': 'ගොනුව',
+  'employee.fileSize': 'ප්‍රමාණය',
+  'employee.uploaded': 'උඩුගත කළ දිනය',
+  'employee.fileAllowed': 'PDF, Word හෝ රූපයක්, උපරිම 10 MB.',
+  'employee.fileTooLarge': 'එම ගොනුව {size} MB ට වඩා විශාලය.',
+  'employee.documentFileRequired': 'උඩුගත කිරීමට ගොනුවක් තෝරන්න.',
+  'employee.downloadFailed': 'එම ලේඛනය බාගත කළ නොහැකි විය.',
+
+  // --- My profile ----------------------------------------------------------
+  'profile.pageTitle': 'මගේ පැතිකඩ',
+  'profile.pageDescription':
+    'ඔබගේ පුද්ගලික, සුදුසුකම්, අත්දැකීම් සහ සේවා තොරතුරු නවතම ලෙස තබා ගන්න.',
 
   // --- Logging a new letter ------------------------------------------------
   'new.title': 'ලිපියක් ඇතුළත් කරන්න',
@@ -472,17 +589,17 @@ export const si = Object.freeze({
   'admin.sections': 'පරිපාලන කොටස්',
   'admin.noTabs': 'ඔබගේ භෝජයට ලබාගත හැකි පරිපාලන පටුවක් නොමැත.',
   'admin.tabUsers': 'පරිශීලකයින්',
+  'admin.tabEmployees': 'සේවකයින්',
   'admin.tabDepartments': 'ප්‍රදේශ අධිකරණ',
   'admin.tabDuties': 'කාර්ය සටහන',
   'admin.tabSettings': 'සැකසුම්',
   'admin.tabAudit': 'විශ්ලේෂණ ලැයිස්තුව',
 
-  'officers.pageTitle': 'නිලධාරීන් හා කාර්ය සටහන්',
+  'officers.pageTitle': 'නිලධාරී තොරතුරු',
   'officers.pageDescription':
-    'පහත රූපවත් කිරීම් යනු කාර්ය ගැලපුම් මැචර් මෙම ලිපියේ මාතෘකාවට ' +
-    'ලක්ෂණ දැක්වීමට ලක් කරන දේ සිංහල, දෙමළ හා ඉංග්‍රීසි භාෂා වලින්ය. ' +
-    'නිලධාරීයකුට කොටස් කිහිපයක බලාපොරොත්තුවක් ඇති විය හැක; ' +
-    'පේළි පෙන්වන්නේ එක් එක් අවස්ථා සඳහාය.',
+    'තෝරාගත් පුද්ගලයාගේ සේවා තොරතුරු, සුදුසුකම්, පළපුරුද්ද, සේවා ඉතිහාසය සහ ' +
+    'ලේඛන ඇතුළත්ව.',
+  'officers.backToDirectory': 'නිලධාරීන් වෙත ආපසු',
   'officers.title': 'නිලධාරීන්',
   'officers.none': 'ක්‍රියාත්මක නිලධාරීන් නොමැත.',
   'officers.loadingChart': 'කාර්ය සටහන පූරණය වෙමින්',
@@ -494,6 +611,17 @@ export const si = Object.freeze({
   'officers.homeSection': 'මුල් අංශය:',
   'officers.homeSectionMissing': 'ලියා නැත',
   'officers.sectionsCount': 'අංශ {sections} ක තුන් කාර්ය {count}.',
+
+  'employees.description':
+    'සම්පූර්ණ මානව සම්පත් ගොනුව බැලීමට ඕනෑම සේවකයෙකු විවෘත කරන්න (පරිපාලකයින්ට එය ' +
+    'සංස්කරණය කළ හැක). නම හෝ ජාතික හඳුනා අංකය, භූමිකාව, දෙපාර්තමේන්තුව හෝ ක්‍රියාත්මක ' +
+    'තත්ත්වය අනුව පෙරහන් කරන්න.',
+  'employees.loadFailed': 'සේවක නාමාවලිය පූරණය කළ නොහැකි විය.',
+  'employees.allDepartments': 'සියලු අංශ',
+  'employees.view': 'බලන්න',
+  'employees.noMatches': 'මෙම පෙරහන් වලට ගැලපෙන සේවකයෙකු නොමැත.',
+  'employees.clearFilters': 'සම්පූර්ණ නාමාවලිය බැලීමට පෙරහන් ඉවත් කරන්න.',
+  'employees.none': 'තවම සේවකයෙකු නොමැත.',
 
   'mail.backToRegistry': '← ලිපි ලැයිස්තුවට ආපසු',
   'mail.title': 'ලිපිය',
@@ -589,6 +717,18 @@ export const si = Object.freeze({
   'forward.branchSubmit': 'ශාඛා ප්‍රධානී වෙත යවන්න',
   'forward.branchSent': 'ශාඛා ප්‍රධානී වෙත යවන ලදී.',
   'forward.branchFailed': 'එම ලිපිය ශාඛා ප්‍රධානී වෙත යැවිය නොහැකි විය.',
+
+  // දැනටමත් විනිසක් ලැබී (AO විසින් හෝ වෙනත් ශාඛාවක් විසින්) මෙම ශාඛාවට
+  // යොමු කර ඇති ලිපියක්, නිලධාරියෙකු පත් කිරීමට පෙර අමතර විනිසක් සඳහා
+  // ශාඛා ලේඛකයා තමන්ගේම ශාඛා ප්‍රධානී වෙත නැවත යවයි.
+  'branchHead.title': 'නව විනිසක් සඳහා ශාඛා ප්‍රධානී වෙත යවන්න',
+  'branchHead.help':
+    'අමතර විනිසක් සඳහා ලිපිය ඔබගේ ශාඛා ප්‍රධානී වෙත භාර දෙන්න. ලිපිය නැවත ' +
+    'පැමිණි විට ප්‍රධානීගේ විනිස සටහන් කර, පසුව ඔබගේ ශාඛාවේ නිලධාරියෙකු පත් කරන්න.',
+  'branchHead.submit': 'ශාඛා ප්‍රධානී වෙත යවන්න',
+  'branchHead.sending': 'යවමින්',
+  'branchHead.sent': 'නව විනිසක් සඳහා ශාඛා ප්‍රධානී වෙත යවන ලදී.',
+  'branchHead.failed': 'එම ලිපිය ශාඛා ප්‍රධානී වෙත යැවිය නොහැකි විය.',
 
   'rail.title': 'ක්‍රියාවලි ප්‍රගතිය',
   'rail.minutesTitle':
@@ -861,7 +1001,9 @@ export const si = Object.freeze({
   'minutes.formTitleBranchHead': 'ශාඛා ප්‍රධානීගේ විනිසුරුගේ සටහන් එකතු කර යොමු කරන්න',
   'minutes.formHintBranchHead':
     'මෙම ලිපිය සඳහා ඔබගේ ශාඛා ප්‍රධානී තවම විනිසුරුගේ සටහන් ලියා නොමැත. ' +
-    'ඔහු භාෂික ලිපිය මත ලියපු අනුමැතිකම මෙහි ඇතුළත් කරන්න — සටහන ඔහුගේ නමින් ලියා ඇති අතර, එය ලියාපදිංචි කළ ලේඛකයා ලෙස ඔබගේ නම ඇතුළත් වේ.',
+    'ඔහු භෞතික ලිපිය මත ලියූ දෙය මෙහි ඇතුළත් කරන්න — සටහන ඔහුගේ නමින් ලියා ඇති අතර, ' +
+    'එය ලියාපදිංචි කළ ලේඛකයා ලෙස ඔබගේ නම ඇතුළත් වේ. AO (හෝ වෙනත් ශාඛාවක්) දැනටමත් ' +
+    'ලියා ඇති විනිස ගොනුවේ රැඳී ඇත.',
   'minutes.onBehalfHintBranchHead':
     'සටහන ඔබගේ ශාඛා ප්‍රධානීගේ නමින් ලියා ඇත. එය ලියාපදිංචි කළ ලේඛකයා ලෙස ඔබගේ නම ඇතුළත් වේ.',
   'minutes.onBehalfNoAuthorsBranchHead': 'මෙම ශාඛාව සඳහා දෙපාර්තමේන්තු ප්‍රධානියෙකු ලියාපදිංචි කර නොමැත',
@@ -899,6 +1041,9 @@ export const si = Object.freeze({
   'users.centralClerk': 'මධ්‍යම පිළිගැනීමේ ලිපිකරු',
   'users.centralClerkHint':
     'සෑම දෙපාර්තමේන්තුවක් සඳහාම ලිපි පිළිගැනීම සිදු කරයි: ඕනෑම දෙපාර්තමේන්තුවක ලිපියක් බැලීමට, යැවීමට සහ AO හි මිනිත්තු සටහන් කිරීමට හැකිය. රහස්‍ය ලිපි සැඟවී පවතී.',
+  'users.viewOfficers': 'නිලධාරී නාමාවලිය බැලීමට හැකිය',
+  'users.viewOfficersHint':
+    'සෑම සේවකයෙකු සහ ඔවුන්ගේ සම්පූර්ණ මානව සම්පත් ගොනුව ලැයිස්තුගත කරන නිලධාරී පිටුව විවෘත කරයි. පරිපාලකයින්ට සැමවිටම ප්‍රවේශය ඇත.',
   'users.deactivatedNotice': '{name} අක්‍රිය කරන ලදී.',
   'users.reactivatedNotice': '{name} නැවත ක්‍රියාත්මක කරන ලදී.',
   'users.failed': 'එම පරිශීලකයා සුරක්ෂිත කළ නොහැකි විය.',

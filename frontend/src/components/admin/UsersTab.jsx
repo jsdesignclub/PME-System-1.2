@@ -39,30 +39,7 @@ import { Modal } from '../../components/common/Modal.jsx';
 import { RoleBadge } from '../../components/common/RoleBadge.jsx';
 import { useApiError } from '../../hooks/useApiError.js';
 import { formatDateTime } from '../../utils/dateUtils.js';
-
-/**
- * The role ENUM, in schema order.
- *
- * This is a list of the roles a user may be GIVEN, not a role→permission map.
- * The distinction is the whole point of D25: the client may know which role
- * names exist (they are in the spec and in the schema), and may not know what
- * each one permits — that list comes from `/auth/permissions` at runtime.
- *
- * Kept as a local constant rather than fetched, because there is no endpoint that
- * serves the ENUM and inventing one would be a new API surface for a list of
- * role names that changes when a migration changes.
- */
-const ROLES = [
-  'MINOR_STAFF',
-  'SECRETARY',
-  'AO',
-  'CHIEF_CLERK',
-  'SUBJECT_CLERK',
-  'DEPARTMENT_HEAD',
-  'OFFICER',
-  'TRANSPORT_OFFICER',
-  'ADMIN',
-];
+import { ROLES } from '../../utils/roles.js';
 
 /**
  * The designations a profile may carry, in the order the ministry lists them.
@@ -543,6 +520,7 @@ function UserDialog({ title, user, mode = 'edit', onClose, onSave, failure }) {
     department_id: user?.department_id ?? '',
     section_name: user?.section_name ?? '',
     is_central_clerk: user?.is_central_clerk ?? false,
+    can_view_officers: user?.can_view_officers ?? false,
   });
   const [busy, setBusy] = useState(false);
 
@@ -585,6 +563,9 @@ function UserDialog({ title, user, mode = 'edit', onClose, onSave, failure }) {
       // Only a SUBJECT_CLERK can hold the flag; switching the role away clears
       // it, so `is_central_clerk()` can never widen a non-clerk.
       is_central_clerk: form.role === 'SUBJECT_CLERK' ? Boolean(form.is_central_clerk) : false,
+      // Administrators always see the directory, so the flag only travels for
+      // everyone else (see can_view_officers()).
+      can_view_officers: form.role === 'ADMIN' ? false : Boolean(form.can_view_officers),
     };
 
     // `section_name` is optional server-side (optionalString), so an empty box is
@@ -704,6 +685,29 @@ function UserDialog({ title, user, mode = 'edit', onClose, onSave, failure }) {
               <span className="font-medium text-slate-700">{t('users.centralClerk')}</span>
               <span className="mt-0.5 block text-xs text-slate-500">
                 {t('users.centralClerkHint')}
+              </span>
+            </span>
+          </label>
+        )}
+
+        {/*
+          The per-person grant behind the Officers directory. Administrators get
+          in unconditionally, so the checkbox is only offered for other roles.
+        */}
+        {form.role !== 'ADMIN' && (
+          <label className="flex items-start gap-2 rounded-btn bg-slate-50 p-3 text-sm">
+            <input
+              type="checkbox"
+              checked={form.can_view_officers}
+              onChange={(event) =>
+                setForm((c) => ({ ...c, can_view_officers: event.target.checked }))
+              }
+              className="mt-0.5"
+            />
+            <span>
+              <span className="font-medium text-slate-700">{t('users.viewOfficers')}</span>
+              <span className="mt-0.5 block text-xs text-slate-500">
+                {t('users.viewOfficersHint')}
               </span>
             </span>
           </label>

@@ -74,6 +74,7 @@ export async function listAll(filters = {}, options = {}, pageSize = 500, sort =
 const ACTION_LABELS = Object.freeze({
   add_minutes: 'Add minutes',
   forward_to_ao: 'Forward to AO',
+  send_to_branch_head: 'Send to branch head',
   forward: 'Forward',
   edit: 'Edit',
   delete: 'Delete',
@@ -464,6 +465,36 @@ export async function forwardToAo(id) {
   return requireOneRow(
     data,
     'The letter could not be forwarded. It may have been moved by another user, or your role may not permit changing it.',
+  );
+}
+
+/**
+ * Send a MINUTED letter back to the branch clerk's own Department Head for an
+ * additional minute.
+ *
+ * This is the branch desk's move, not intake: the letter is already at
+ * 'Forwarded to Subject' (the AO's minute, or another branch's, is on the
+ * file) and the branch clerk wants their head's endorsement before assigning
+ * an officer. The stored status returns to 'Forwarded to AO' — the branch-head
+ * step never had a value of its own — and the existing BEFORE trigger stamps
+ * `endorser_role = 'DEPARTMENT_HEAD'` from the caller's profile, so the browser
+ * cannot choose the endorser. The notification trigger then tells the head.
+ *
+ * The write is CONDITIONAL on the letter still being at 'Forwarded to Subject':
+ * if it moved since the page loaded, the update matches no row and the clerk is
+ * told to refresh rather than undoing somebody else's step.
+ */
+export async function sendToBranchHead(id) {
+  const { data, error } = await supabase
+    .from('mail_records')
+    .update({ status: 'Forwarded to AO' })
+    .eq('id', id)
+    .eq('status', 'Forwarded to Subject')
+    .select();
+  if (error) throw error;
+  return requireOneRow(
+    data,
+    'The letter could not be sent to the branch head. It may have been moved by another user, or your role may not permit changing it.',
   );
 }
 

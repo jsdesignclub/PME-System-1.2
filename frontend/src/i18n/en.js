@@ -33,6 +33,7 @@ export const en = Object.freeze({
 
   // --- Navigation ----------------------------------------------------------
   'nav.dashboard': 'Dashboard',
+  'nav.myProfile': 'My profile',
   'nav.registry': 'Letter Registry',
   'nav.officers': 'Officers',
   'nav.admin': 'Administration',
@@ -66,6 +67,7 @@ export const en = Object.freeze({
   'common.cancel': 'Cancel',
   'common.delete': 'Delete',
   'common.edit': 'Edit',
+  'common.download': 'Download',
   'common.add': 'Add',
   'common.close': 'Close',
   'common.apply': 'Apply',
@@ -248,6 +250,122 @@ export const en = Object.freeze({
     'This officer holds no duty rows, so the matcher can never rank them.',
   'officer.duties': 'Duties',
   'officer.dutyChart': 'Duty chart',
+  'officers.profileTab': 'Employee profile',
+  'officers.qualificationsTab': 'Qualifications',
+  'officers.experienceTab': 'Previous experience',
+  'officers.serviceHistoryTab': 'Service history',
+  'officers.documentsTab': 'Documents',
+  'officers.dutyChartTab': 'Duty chart',
+  'officers.profileTitle': 'Employee profile',
+  'officers.loadingProfile': 'Loading the employee profile',
+  'officers.profileEmpty': 'No HR details recorded for this officer yet.',
+
+  // --- Employee HR details -------------------------------------------------
+  'employee.dateOfBirth': 'Date of birth',
+  'employee.gender': 'Gender',
+  'employee.maritalStatus': 'Marital status',
+  'employee.nationality': 'Nationality',
+  'employee.bloodGroup': 'Blood group',
+  'employee.phone': 'Phone',
+  'employee.personalEmail': 'Personal email',
+  'employee.employmentType': 'Employment type',
+  'employee.joinDate': 'Joined service',
+  'employee.confirmationDate': 'Confirmed in service',
+  'employee.retirementDate': 'Retirement date',
+  'employee.serviceGrade': 'Service grade',
+  'employee.salaryScale': 'Salary scale',
+  'employee.emergencyContactName': 'Emergency contact',
+  'employee.emergencyContactPhone': 'Emergency phone',
+  'employee.permanentAddress': 'Permanent address',
+  'employee.residentialAddress': 'Residential address',
+  'employee.notes': 'Notes',
+  'employee.profileHint': 'Your basic personal and employment details.',
+  'employee.editDetails': 'Edit details',
+  'employee.addDetails': 'Add details',
+  'employee.detailsUpdated': 'Employee details saved.',
+
+  // --- Qualifications and experience ---------------------------------------
+  'employee.qualifications': 'Qualifications',
+  'employee.qualificationsHint':
+    'Academic and professional qualifications held by this officer.',
+  'employee.addQualification': 'Add qualification',
+  'employee.editQualification': 'Edit qualification',
+  'employee.noQualifications': 'No qualifications recorded.',
+  'employee.qualificationAdded': 'Qualification added.',
+  'employee.qualificationUpdated': 'Qualification updated.',
+  'employee.qualificationRemoved': 'Qualification removed.',
+  'employee.deleteQualificationTitle': 'Delete qualification',
+  'employee.deleteQualificationMessage':
+    'Delete the qualification "{title}"? This cannot be undone.',
+  'employee.level': 'Level',
+  'employee.title': 'Qualification',
+  'employee.titleRequired': 'Enter the qualification title.',
+  'employee.institution': 'Institution',
+  'employee.yearCompleted': 'Year completed',
+  'employee.grade': 'Grade',
+
+  'employee.experience': 'Previous experience',
+  'employee.experienceHint': 'Previous employers and the periods worked there.',
+  'employee.addExperience': 'Add experience',
+  'employee.editExperience': 'Edit experience',
+  'employee.noExperience': 'No previous experience recorded.',
+  'employee.experienceAdded': 'Experience added.',
+  'employee.experienceUpdated': 'Experience updated.',
+  'employee.experienceRemoved': 'Experience removed.',
+  'employee.deleteExperienceTitle': 'Delete experience',
+  'employee.deleteExperienceMessage':
+    'Delete the experience at "{employer}"? This cannot be undone.',
+  'employee.employer': 'Employer',
+  'employee.employerRequired': 'Enter the employer name.',
+  'employee.jobTitle': 'Job title',
+  'employee.period': 'Period',
+  'employee.fromDate': 'From',
+  'employee.toDate': 'To',
+  'employee.toDateHint': 'Leave blank if this is the current employer.',
+  'employee.current': 'Current',
+  'employee.dateOrder': 'The end date cannot be before the start date.',
+  'employee.description': 'Description',
+
+  'employee.serviceHistory': 'Service history',
+  'employee.serviceHistoryHint': 'Postings, promotions and transfers within the ministry.',
+  'employee.addServiceRecord': 'Add service record',
+  'employee.editServiceRecord': 'Edit service record',
+  'employee.noServiceHistory': 'No service history recorded.',
+  'employee.serviceRecordAdded': 'Service record added.',
+  'employee.serviceRecordUpdated': 'Service record updated.',
+  'employee.serviceRecordRemoved': 'Service record removed.',
+  'employee.deleteServiceRecordTitle': 'Delete service record',
+  'employee.deleteServiceRecordMessage':
+    'Delete the service record for "{designation}"? This cannot be undone.',
+  'employee.designation': 'Designation',
+  'employee.designationRequired': 'Enter the designation.',
+  'employee.workplace': 'Workplace',
+  'employee.remarks': 'Remarks',
+  'employee.readOnly': 'Only an administrator or the employee can change HR records.',
+
+  'employee.documents': 'Documents',
+  'employee.documentsHint': 'Certificates, appointment letters and other scans.',
+  'employee.addDocument': 'Add document',
+  'employee.noDocuments': 'No documents uploaded.',
+  'employee.documentUploaded': 'Document uploaded.',
+  'employee.documentRemoved': 'Document removed.',
+  'employee.deleteDocumentTitle': 'Delete document',
+  'employee.deleteDocumentMessage':
+    'Delete the document "{title}"? This cannot be undone.',
+  'employee.documentTitle': 'Document title',
+  'employee.documentType': 'Document type',
+  'employee.documentFile': 'File',
+  'employee.fileSize': 'Size',
+  'employee.uploaded': 'Uploaded',
+  'employee.fileAllowed': 'PDF, Word or an image, up to 10 MB.',
+  'employee.fileTooLarge': 'That file is larger than {size} MB.',
+  'employee.documentFileRequired': 'Choose a file to upload.',
+  'employee.downloadFailed': 'That document could not be downloaded.',
+
+  // --- My profile ----------------------------------------------------------
+  'profile.pageTitle': 'My profile',
+  'profile.pageDescription':
+    'Keep your own personal, qualification, experience and service details up to date.',
 
   // --- Logging a new letter ------------------------------------------------
   'new.title': 'Log a letter',
@@ -470,16 +588,17 @@ export const en = Object.freeze({
   'admin.sections': 'Administration sections',
   'admin.noTabs': 'No administration tab is available to your role.',
   'admin.tabUsers': 'Users',
+  'admin.tabEmployees': 'Employees',
   'admin.tabDepartments': 'Departments',
   'admin.tabDuties': 'Duty Charts',
   'admin.tabSettings': 'Settings',
   'admin.tabAudit': 'Audit Log',
 
-  'officers.pageTitle': 'Officers & Duty Charts',
+  'officers.pageTitle': 'Officer information',
   'officers.pageDescription':
-    'The keywords below are what the duty matcher scores a letter\'s subject against, ' +
-    'in Sinhala, Tamil and English. An officer may hold duties in several sections; ' +
-    'each row is a separate claim, and a claim is ranked on its own evidence.',
+    'Employment information for the selected person, including qualifications, ' +
+    'experience, service history and documents.',
+  'officers.backToDirectory': 'Back to officers',
   'officers.title': 'Officers',
   'officers.none': 'No active officers.',
   'officers.loadingChart': 'Loading the duty chart',
@@ -491,6 +610,16 @@ export const en = Object.freeze({
   'officers.homeSection': 'Home section:',
   'officers.homeSectionMissing': 'not recorded',
   'officers.sectionsCount': '{count} duties across {sections} sections.',
+
+  'employees.description':
+    'Open any employee to view their full HR file (administrators can also edit it). ' +
+    'Filter by name or NIC, role, department, or active status.',
+  'employees.loadFailed': 'The employee directory could not be loaded.',
+  'employees.allDepartments': 'All departments',
+  'employees.view': 'View',
+  'employees.noMatches': 'No employees match these filters.',
+  'employees.clearFilters': 'Clear the filters to see the whole directory.',
+  'employees.none': 'No employees yet.',
 
   'mail.backToRegistry': '← Back to the letter registry',
   'mail.title': 'Letter',
@@ -588,6 +717,19 @@ export const en = Object.freeze({
   'forward.branchSubmit': 'Forward to Branch Head',
   'forward.branchSent': 'Forwarded to the Branch Head.',
   'forward.branchFailed': 'That letter could not be forwarded to the Branch Head.',
+
+  // A letter that was already minuted (by the AO, or by another branch) and
+  // routed to this branch. The branch clerk sends it back to their own head for
+  // an additional minute before assigning an officer.
+  'branchHead.title': 'Send to branch head for a new minute',
+  'branchHead.help':
+    'Hand the letter to your Department Head for an additional minute. Record ' +
+    'the head\'s minute when the paper comes back, then assign one of your ' +
+    'branch\'s officers.',
+  'branchHead.submit': 'Send to branch head',
+  'branchHead.sending': 'Sending',
+  'branchHead.sent': 'Sent to the branch head for a new minute.',
+  'branchHead.failed': 'That letter could not be sent to the branch head.',
 
   'rail.title': 'Workflow progress',
   'rail.minutesTitle':
@@ -869,7 +1011,8 @@ export const en = Object.freeze({
   'minutes.formHintBranchHead':
     'Your branch head has not recorded a minute on this letter yet. ' +
     'Enter what they wrote on the physical letter — the minute is recorded in their name, ' +
-    'with you named as the clerk who entered it.',
+    'with you named as the clerk who entered it. Any minute the AO (or another branch) ' +
+    'already wrote stays on the file.',
   'minutes.onBehalfHintBranchHead':
     'The minute is recorded in your branch head\'s name. You are named as the clerk who entered it.',
   'minutes.onBehalfNoAuthorsBranchHead': 'No Department Head is recorded for this branch',
@@ -908,6 +1051,9 @@ export const en = Object.freeze({
   'users.centralClerk': 'Central intake clerk',
   'users.centralClerkHint':
     'Handles intake for every department: can view, forward and record the AO\'s minutes for letters in any department. Confidential letters stay hidden.',
+  'users.viewOfficers': 'Can view the Officers directory',
+  'users.viewOfficersHint':
+    'Opens the Officers page, which lists every employee and their full HR file. Administrators always have access.',
   'users.deactivatedNotice': '{name} was deactivated.',
   'users.reactivatedNotice': '{name} was reactivated.',
   'users.failed': 'That user could not be saved.',

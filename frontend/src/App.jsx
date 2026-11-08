@@ -28,6 +28,7 @@ import ForbiddenPage from './pages/ForbiddenPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import MailDetailPage from './pages/MailDetailPage.jsx';
 import MailRegistryPage from './pages/MailRegistryPage.jsx';
+import MyProfilePage from './pages/MyProfilePage.jsx';
 import NewMailPage from './pages/NewMailPage.jsx';
 import NotFoundPage from './pages/NotFoundPage.jsx';
 import OfficerPage from './pages/OfficerPage.jsx';
@@ -116,6 +117,24 @@ function RequireAdminArea({ children }) {
   return children;
 }
 
+/**
+ * Gate for the Officers directory.
+ *
+ * The directory holds every employee's HR file, so it is not a route for all
+ * authenticated users. `canViewOfficers` is true for an administrator and for
+ * anyone an administrator has granted the flag (see the Users dialog). A refused
+ * visitor is sent to their own profile rather than a 403, because the link is
+ * hidden from them in the first place and the profile is the page they actually
+ * have.
+ */
+function RequireOfficerAccess({ children }) {
+  const { canViewOfficers, loading } = useAuth();
+
+  if (loading) return <Spinner label="Restoring your session" />;
+  if (!canViewOfficers) return <Navigate to="/profile" replace />;
+  return children;
+}
+
 export default function App() {
   return (
     // BASE_URL mirrors Vite's `base`: "/" locally, "/PME-System-1.2/" on
@@ -140,8 +159,23 @@ export default function App() {
                     <Route path="/mail/new" element={<NewMailPage />} />
                     {/* After `/mail/new`, so "new" is never read as an id. */}
                     <Route path="/mail/:id" element={<MailDetailPage />} />
-                    <Route path="/officers" element={<OfficerPage />} />
-                    <Route path="/officers/:id" element={<OfficerPage />} />
+                    <Route path="/profile" element={<MyProfilePage />} />
+                    <Route
+                      path="/officers"
+                      element={
+                        <RequireOfficerAccess>
+                          <OfficerPage />
+                        </RequireOfficerAccess>
+                      }
+                    />
+                    <Route
+                      path="/officers/:id"
+                      element={
+                        <RequireOfficerAccess>
+                          <OfficerPage />
+                        </RequireOfficerAccess>
+                      }
+                    />
 
                     <Route
                       path="/admin"

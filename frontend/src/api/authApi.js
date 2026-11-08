@@ -40,6 +40,7 @@ export async function login(identifier, password) {
       section_name: fullProfile.section_name,
       is_active: fullProfile.is_active,
       is_central_clerk: fullProfile.is_central_clerk,
+      can_view_officers: fullProfile.can_view_officers,
     },
   };
 }
@@ -77,8 +78,9 @@ const ROLE_PERMISSIONS = {
   // addressed to them. They do not log, forward or assign — those are clerk
   // duties.
   DEPARTMENT_HEAD: ['READ_DEPARTMENT_MAIL','READ_ASSIGNED_MAIL','WRITE_MINUTES','UPDATE_ACTION_STATUS'],
-  // Officers read the duty chart (all of it, via /officers) but cannot change it:
-  // maintaining the chart is ADMIN / AO / SUBJECT_CLERK's responsibility.
+  // Officers cannot change the duty chart; maintaining it is ADMIN / AO /
+  // SUBJECT_CLERK's responsibility. Reading it goes through the Officers
+  // directory, which is gated by can_view_officers() rather than by this table.
   OFFICER: ['READ_ASSIGNED_MAIL','UPDATE_ACTION_STATUS'],
   TRANSPORT_OFFICER: ['READ_ASSIGNED_MAIL','UPDATE_ACTION_STATUS'],
 };
@@ -111,6 +113,7 @@ export async function me() {
     section_name: profile.section_name,
     is_active: profile.is_active,
     is_central_clerk: profile.is_central_clerk,
+    can_view_officers: profile.can_view_officers,
   };
 }
 

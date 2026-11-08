@@ -48,6 +48,7 @@ import { DutyMatcherBox } from '../components/mail/DutyMatcherBox.jsx';
 import { ForwardToAoPanel } from '../components/mail/ForwardToAoPanel.jsx';
 import { MinutesTimeline } from '../components/mail/MinutesTimeline.jsx';
 import { PrintButton, PrintMinuteSlip } from '../components/mail/PrintMinuteSlip.jsx';
+import { SendToBranchHeadPanel } from '../components/mail/SendToBranchHeadPanel.jsx';
 import { StatusRail } from '../components/mail/StatusRail.jsx';
 import { OfficerActionPanel } from '../components/mail/OfficerActionPanel.jsx';
 
@@ -145,6 +146,7 @@ export default function MailDetailPage() {
   const canAssign = actions.some((a) => a.action === 'assign');
   const canWriteMinutes = actions.some((a) => a.action === 'add_minutes');
   const canForwardToAo = actions.some((a) => a.action === 'forward_to_ao');
+  const canSendToBranchHead = actions.some((a) => a.action === 'send_to_branch_head');
 
   // The upload right, expressed the way `mailController.addAttachments` enforces
   // it: CREATE_MAIL (the clerk who logged the letter) OR UPDATE_ACTION_STATUS
@@ -314,6 +316,10 @@ export default function MailDetailPage() {
             <SelfAssignCard mail={mail} user={user} onChanged={load} notify={notify} />
           )}
 
+          {canSendToBranchHead && (
+            <SendToBranchHeadPanel letter={mail} notify={notify} onChanged={load} />
+          )}
+
           <DutyMatcherPanel letterId={mail.id} selected={assigning} onSelect={setAssigning} canAssign={canAssign} />
 
           {actions.some((a) => a.action === 'start') && (
@@ -332,7 +338,8 @@ export default function MailDetailPage() {
           ) &&
             !canWriteMinutes &&
             !canAssign &&
-            !canForwardToAo && (
+            !canForwardToAo &&
+            !canSendToBranchHead && (
               <Card title={t('nextStep.title')}>
                 <p className="text-sm text-slate-600">
                   {status === 'Completed'

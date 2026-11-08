@@ -155,6 +155,9 @@ export function AuthProvider({ children }) {
       hasAny: (wanted) => wanted.some((permission) => permissions.includes(permission)),
       canCreateMail: permissions.includes('CREATE_MAIL'),
       isAdmin: ADMIN_ROLES.includes(session?.user?.role),
+      canViewOfficers:
+        ADMIN_ROLES.includes(session?.user?.role) ||
+        session?.user?.can_view_officers === true,
     }),
     [session, permissions, loading, signIn, signOut]
   );
