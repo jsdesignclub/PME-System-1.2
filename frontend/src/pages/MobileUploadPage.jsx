@@ -18,6 +18,7 @@ import * as uploadTicketApi from '../api/uploadTicketApi.js';
 import { errorMessage } from '../api/axiosClient.js';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { ALLOWED_EXTENSIONS, MAX_UPLOAD_MB, extensionOf } from '../utils/fileTypes.js';
+import { compressImage } from '../utils/imageCompression.js';
 import { formatBytes } from '../utils/dateUtils.js';
 import { ErrorNote } from '../components/common/ErrorNote.jsx';
 
@@ -26,6 +27,7 @@ export default function MobileUploadPage() {
   const { token } = useParams();
   const [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [preparing, setPreparing] = useState(false);
   const [error, setError] = useState(null);
   const [done, setDone] = useState(false);
   const cameraInput = useRef(null);
@@ -36,7 +38,7 @@ export default function MobileUploadPage() {
    * A bad file is named rather than silently dropped, and the whole selection is
    * refused so the list on screen always matches what will be uploaded.
    */
-  function addFiles(list) {
+  async function addFiles(list) {
     const chosen = Array.from(list ?? []);
     if (chosen.length === 0) return;
 
@@ -62,7 +64,17 @@ export default function MobileUploadPage() {
       }
     }
 
-    setFiles((current) => [...current, ...chosen]);
+    // A camera photo is far larger than the page needs to be readable. Shrink
+    // each image before it joins the list, so the size shown is the size that
+    // will actually be uploaded. Non-images pass through untouched.
+    setPreparing(true);
+    try {
+      const prepared = [];
+      for (const file of chosen) prepared.push(await compressImage(file));
+      setFiles((current) => [...current, ...prepared]);
+    } finally {
+      setPreparing(false);
+    }
   }
 
   function remove(index) {
@@ -106,14 +118,16 @@ export default function MobileUploadPage() {
                 <button
                   type="button"
                   onClick={() => cameraInput.current?.click()}
-                  className="rounded-btn bg-brand px-4 py-3 text-sm font-medium text-white transition hover:bg-brand-700"
+                  disabled={preparing}
+                  className="rounded-btn bg-brand px-4 py-3 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-50"
                 >
                   {t('scan.takePhoto')}
                 </button>
                 <button
                   type="button"
                   onClick={() => fileInput.current?.click()}
-                  className="rounded-btn border border-slate-300 px-4 py-3 text-sm font-medium text-ink transition hover:bg-slate-50"
+                  disabled={preparing}
+                  className="rounded-btn border border-slate-300 px-4 py-3 text-sm font-medium text-ink transition hover:bg-slate-50 disabled:opacity-50"
                 >
                   {t('scan.chooseFiles')}
                 </button>
@@ -143,6 +157,11 @@ export default function MobileUploadPage() {
               />
 
               <p className="text-xs text-slate-500">{t('scan.mobileLimit')}</p>
+              <p className="text-xs text-slate-500">{t('scan.mobileOptimiseNote')}</p>
+
+              {preparing && (
+                <p className="text-sm text-slate-600">{t('scan.optimising')}</p>
+              )}
 
               {files.length > 0 && (
                 <div className="space-y-2">
@@ -181,7 +200,7 @@ export default function MobileUploadPage() {
               <button
                 type="button"
                 onClick={submit}
-                disabled={busy || files.length === 0}
+                disabled={busy || preparing || files.length === 0}
                 className="w-full rounded-btn bg-brand px-4 py-3 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-50"
               >
                 {busy

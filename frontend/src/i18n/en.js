@@ -1177,4 +1177,7 @@ export const en = Object.freeze({
     'The document was attached to the letter. You can close this page.',
   'scan.mobileUploadFailed': 'The document could not be uploaded.',
   'scan.mobileLimit': 'Up to 10 MB per file. PDF, Word or an image.',
+  'scan.mobileOptimiseNote':
+    'Photos are shrunk automatically so they upload quickly and stay readable.',
+  'scan.optimising': 'Optimising photo…',
 });

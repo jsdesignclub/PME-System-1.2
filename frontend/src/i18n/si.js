@@ -1166,4 +1166,7 @@ export const si = Object.freeze({
   'scan.mobileDoneBody': 'ලේඛනය ලිපියට අමුණන ලදී. ඔබට මෙම පිටුව වැසිය හැක.',
   'scan.mobileUploadFailed': 'ලේඛනය උඩුගත කළ නොහැකි විය.',
   'scan.mobileLimit': 'එක් ගොනුවකට 10 MB දක්වා. PDF, Word හෝ රූපයක්.',
+  'scan.mobileOptimiseNote':
+    'ඉක්මනින් උඩුගත වන පරිදි ඡායාරූප ස්වයංක්‍රීයව කුඩා කරනු ලැබේ.',
+  'scan.optimising': 'ඡායාරූපය ප්‍රශස්ත කරමින්…',
 });
