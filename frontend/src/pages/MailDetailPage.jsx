@@ -48,6 +48,7 @@ import { DutyMatcherBox } from '../components/mail/DutyMatcherBox.jsx';
 import { ForwardToAoPanel } from '../components/mail/ForwardToAoPanel.jsx';
 import { MinutesTimeline } from '../components/mail/MinutesTimeline.jsx';
 import { PrintButton, PrintMinuteSlip } from '../components/mail/PrintMinuteSlip.jsx';
+import { ScanUploadPanel } from '../components/mail/ScanUploadPanel.jsx';
 import { SendToBranchHeadPanel } from '../components/mail/SendToBranchHeadPanel.jsx';
 import { StatusRail } from '../components/mail/StatusRail.jsx';
 import { OfficerActionPanel } from '../components/mail/OfficerActionPanel.jsx';
@@ -267,6 +268,16 @@ export default function MailDetailPage() {
             canUpload={canAttach}
             onChanged={load}
           />
+
+          {/* Same right as adding a file here: the phone is only a different
+              scanner, not a different permission. */}
+          {canAttach && (
+            <ScanUploadPanel
+              letterId={mail.id}
+              attachmentCount={attachments?.length ?? 0}
+              onChanged={load}
+            />
+          )}
 
           <Card title={t('minutes.title')}>
             <MinutesTimeline minutes={minutes} audit={audit} />

@@ -403,6 +403,26 @@ CREATE TABLE public.mail_attachments (
 CREATE INDEX idx_attachments_mail ON public.mail_attachments(mail_record_id);
 
 -- ============================================================================
+-- upload_tickets — short-lived tokens behind the phone QR upload
+-- ============================================================================
+-- The signed-in desktop mints a token (stored here only as a SHA-256 hash) and
+-- draws it as a QR. A phone with no session presents the raw token to the
+-- `mobile-upload` Edge Function, which runs with the service role. RLS is on
+-- with NO policies, so the browser can never read or mint tickets directly.
+-- Existing installs get this table from patch_mobile_upload.sql.
+CREATE TABLE public.upload_tickets (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  mail_record_id TEXT NOT NULL REFERENCES public.mail_records(id) ON DELETE CASCADE,
+  created_by     UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  token_hash     TEXT NOT NULL UNIQUE,
+  expires_at     TIMESTAMPTZ NOT NULL,
+  used_at        TIMESTAMPTZ NULL,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_upload_tickets_expiry ON public.upload_tickets(expires_at);
+
+-- ============================================================================
 -- completion_submissions — one row per forwarded completion document
 -- ============================================================================
 -- The officer who finishes a letter forwards a "completion document" to the AO
@@ -1133,6 +1153,9 @@ ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mail_attachments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.completion_submissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+-- RLS on with no policy: only the service role (the Edge Functions) may touch
+-- tickets. This is deliberate, not an omission.
+ALTER TABLE public.upload_tickets ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================================
 -- RLS policies

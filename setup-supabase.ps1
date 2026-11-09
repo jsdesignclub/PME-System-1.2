@@ -175,7 +175,7 @@ $env:SUPABASE_ACCESS_TOKEN = $token
 Write-Step 'Deploying Edge Functions'
 
 Write-Info 'The first run downloads the Supabase CLI via npx and may take a minute.'
-Write-Info 'Deploying: create-user, list-unprofiled-users'
+Write-Info 'Deploying: create-user, list-unprofiled-users, create-upload-ticket, mobile-upload'
 
 # --use-api bundles the functions server-side, so this does not need Docker.
 & $npx --yes supabase@latest functions deploy --project-ref $ProjectRef --use-api
@@ -184,7 +184,8 @@ if ($LASTEXITCODE -ne 0) {
     'A 401/403 here means the access token is wrong or lacks access to the project.',
     'If the CLI does not recognise --use-api, update it with: npx supabase@latest --version',
     'You can always deploy by hand instead: Supabase Dashboard > Edge Functions,',
-    'paste supabase\functions\create-user\index.ts and list-unprofiled-users\index.ts.'
+    'paste supabase\functions\create-user\index.ts and list-unprofiled-users\index.ts',
+    '(and create-upload-ticket\index.ts, mobile-upload\index.ts for scan-to-upload).'
   )
 }
 Write-Ok 'Functions deployed.'

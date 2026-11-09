@@ -1144,4 +1144,37 @@ export const en = Object.freeze({
   'common.saving': 'Saving...',
   'duties.keywordPlaceholder': 'Add a keyword and press Enter or comma',
   'users.email': 'Email',
+
+  // --- Scan from phone -----------------------------------------------------
+  'scan.title': 'Scan from your phone',
+  'scan.help':
+    'Show this code and scan it with the phone camera. The phone can then photograph ' +
+    'the letter or choose a file, and upload it straight to this letter.',
+  'scan.generate': 'Show QR code',
+  'scan.generating': 'Creating a link',
+  'scan.regenerate': 'Show a new code',
+  'scan.scanWith': 'Scan this QR code with your phone camera:',
+  'scan.orOpen': 'Or open this address on the phone:',
+  'scan.expires': 'This code works for {time}.',
+  'scan.expired': 'This code has expired. Show a new one.',
+  'scan.waiting': 'Waiting for a document from the phone…',
+  'scan.failed': 'The upload link could not be created.',
+  'scan.close': 'Close',
+  'scan.building': 'Building the QR code',
+  'scan.qrAlt': 'QR code that opens the phone upload page',
+
+  'scan.mobileTitle': 'Upload a document',
+  'scan.mobileIntro':
+    'Photograph the letter or choose a file. It will be attached to the letter shown at the office.',
+  'scan.takePhoto': 'Take a photo',
+  'scan.chooseFiles': 'Choose files',
+  'scan.selected': 'Ready to upload',
+  'scan.remove': 'Remove',
+  'scan.upload': 'Upload {count} file(s)',
+  'scan.uploading': 'Uploading…',
+  'scan.mobileDoneTitle': 'Uploaded',
+  'scan.mobileDoneBody':
+    'The document was attached to the letter. You can close this page.',
+  'scan.mobileUploadFailed': 'The document could not be uploaded.',
+  'scan.mobileLimit': 'Up to 10 MB per file. PDF, Word or an image.',
 });

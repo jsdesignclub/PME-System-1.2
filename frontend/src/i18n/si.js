@@ -1134,4 +1134,36 @@ export const si = Object.freeze({
   'common.saving': 'සුරකිමින්...',
   'duties.keywordPlaceholder': 'මූලපදයක් එක් කර Enter හෝ comma ඔබන්න',
   'users.email': 'විද්‍යුත් තැපෑල',
+
+  // --- Scan from phone -----------------------------------------------------
+  'scan.title': 'ඔබගේ දුරකථනයෙන් පරිලෝකනය කරන්න',
+  'scan.help':
+    'මෙම කේතය පෙන්වා දුරකථන කැමරාවෙන් පරිලෝකනය කරන්න. ඉන්පසු දුරකථනයෙන් ලිපිය ' +
+    'ඡායාරූපගත කර හෝ ගොනුවක් තෝරා මෙම ලිපියට උඩුගත කළ හැක.',
+  'scan.generate': 'QR කේතය පෙන්වන්න',
+  'scan.generating': 'සබැඳිය සාදමින්',
+  'scan.regenerate': 'නව කේතයක් පෙන්වන්න',
+  'scan.scanWith': 'මෙම QR කේතය දුරකථන කැමරාවෙන් පරිලෝකනය කරන්න:',
+  'scan.orOpen': 'හෝ මෙම ලිපිනය දුරකථනයෙන් විවෘත කරන්න:',
+  'scan.expires': 'මෙම කේතය {time} ක් සඳහා වලංගුය.',
+  'scan.expired': 'මෙම කේතය කල් ඉකුත් වී ඇත. නව එකක් පෙන්වන්න.',
+  'scan.waiting': 'දුරකථනයෙන් ලේඛනයක් එන තෙක් රැඳී සිටිමින්…',
+  'scan.failed': 'උඩුගත සබැඳිය සෑදිය නොහැකි විය.',
+  'scan.close': 'වසන්න',
+  'scan.building': 'QR කේතය සාදමින්',
+  'scan.qrAlt': 'දුරකථන උඩුගත පිටුව විවෘත කරන QR කේතය',
+
+  'scan.mobileTitle': 'ලේඛනයක් උඩුගත කරන්න',
+  'scan.mobileIntro':
+    'ලිපිය ඡායාරූපගත කරන්න හෝ ගොනුවක් තෝරන්න. එය කාර්යාලයේ පෙන්වා ඇති ලිපියට අමුණනු ලැබේ.',
+  'scan.takePhoto': 'ඡායාරූපයක් ගන්න',
+  'scan.chooseFiles': 'ගොනු තෝරන්න',
+  'scan.selected': 'උඩුගත කිරීමට සූදානම්',
+  'scan.remove': 'ඉවත් කරන්න',
+  'scan.upload': 'ගොනු {count} ක් උඩුගත කරන්න',
+  'scan.uploading': 'උඩුගත කරමින්…',
+  'scan.mobileDoneTitle': 'උඩුගත කරන ලදී',
+  'scan.mobileDoneBody': 'ලේඛනය ලිපියට අමුණන ලදී. ඔබට මෙම පිටුව වැසිය හැක.',
+  'scan.mobileUploadFailed': 'ලේඛනය උඩුගත කළ නොහැකි විය.',
+  'scan.mobileLimit': 'එක් ගොනුවකට 10 MB දක්වා. PDF, Word හෝ රූපයක්.',
 });

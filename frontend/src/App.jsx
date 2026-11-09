@@ -28,6 +28,7 @@ import ForbiddenPage from './pages/ForbiddenPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import MailDetailPage from './pages/MailDetailPage.jsx';
 import MailRegistryPage from './pages/MailRegistryPage.jsx';
+import MobileUploadPage from './pages/MobileUploadPage.jsx';
 import MyProfilePage from './pages/MyProfilePage.jsx';
 import NewMailPage from './pages/NewMailPage.jsx';
 import NotFoundPage from './pages/NotFoundPage.jsx';
@@ -152,6 +153,11 @@ export default function App() {
               <MailProvider>
                 <Routes>
                   <Route path="/login" element={<LoginPage />} />
+
+                  {/* Public on purpose: the phone that scanned a QR code is not
+                      signed in. The token in the path is the capability, checked
+                      server-side by the `mobile-upload` Edge Function. */}
+                  <Route path="/m/upload/:token" element={<MobileUploadPage />} />
 
                   <Route element={<RequireAuth />}>
                     <Route path="/" element={<DashboardPage />} />

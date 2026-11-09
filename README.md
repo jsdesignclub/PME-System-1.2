@@ -239,6 +239,25 @@ The functions read the service-role key from the `SUPABASE_SERVICE_ROLE_KEY`
 secret Supabase injects automatically. If a function reports a missing key, add
 `SERVICE_ROLE_KEY` under **Project Settings → Edge Functions → Secrets**.
 
+### Scan-to-upload (phone)
+
+The letter page can show a QR code so a clerk photographs a document with a
+phone instead of using the desktop file picker. This adds two functions —
+`create-upload-ticket` (signed-in desktop, mints a 15-minute single-use token)
+and `mobile-upload` (public, `verify_jwt = false`, uploads the phone's files).
+`npm run setup:supabase` deploys them along with the rest; the per-function
+`verify_jwt` flags live in `supabase/config.toml`.
+
+Before using it, create the `upload_tickets` table by running
+`database/patch_mobile_upload.sql` in the Supabase SQL Editor (fresh installs
+already get it from `supabase_schema.sql`).
+
+**The QR encodes `window.location.origin`.** If the desktop opens the app at
+`http://localhost:5173`, the phone will try to reach *itself* and the scan fails.
+Open the app on the desktop through the PC's LAN address (Vite already listens on
+all interfaces), or set `VITE_PUBLIC_APP_URL` in `frontend/.env` to the origin
+the phone can reach (e.g. `https://pme.example.gov.lk`).
+
 To confirm a function is live, a bare call should return
 `401 Missing authorization`, not `404`:
 

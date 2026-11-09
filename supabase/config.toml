@@ -18,3 +18,13 @@ verify_jwt = true
 
 [functions.list-unprofiled-users]
 verify_jwt = true
+
+# Scan-to-upload. The desktop mints a one-time token behind its own session; the
+# phone that scans the QR has no session, so its upload endpoint must accept an
+# unauthenticated request. The token IS the authorization there — see the
+# function's header and database/patch_mobile_upload.sql.
+[functions.create-upload-ticket]
+verify_jwt = true
+
+[functions.mobile-upload]
+verify_jwt = false
