@@ -22,7 +22,7 @@ const DEFAULT_QUALITY = 0.82;
 const MIN_QUALITY = 0.5;
 
 /** Decode a File into something drawable, honouring EXIF orientation. */
-function loadBitmap(file) {
+export function loadBitmap(file) {
   if (typeof createImageBitmap === 'function') {
     return createImageBitmap(file, { imageOrientation: 'from-image' });
   }

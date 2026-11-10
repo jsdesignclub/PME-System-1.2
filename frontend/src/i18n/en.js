@@ -1148,8 +1148,8 @@ export const en = Object.freeze({
   // --- Scan from phone -----------------------------------------------------
   'scan.title': 'Scan from your phone',
   'scan.help':
-    'Show this code and scan it with the phone camera. The phone can then photograph ' +
-    'the letter or choose a file, and upload it straight to this letter.',
+    'Show this code and scan it with the phone camera. On the phone, photograph each ' +
+    'page, crop and rotate it, and the pages upload as one PDF on this letter.',
   'scan.generate': 'Show QR code',
   'scan.generating': 'Creating a link',
   'scan.regenerate': 'Show a new code',
@@ -1163,20 +1163,43 @@ export const en = Object.freeze({
   'scan.building': 'Building the QR code',
   'scan.qrAlt': 'QR code that opens the phone upload page',
 
-  'scan.mobileTitle': 'Upload a document',
+  'scan.mobileTitle': 'Scan and upload',
   'scan.mobileIntro':
-    'Photograph the letter or choose a file. It will be attached to the letter shown at the office.',
+    'Photograph the pages one at a time, or choose files already on the phone. ' +
+    'Photos are joined into one PDF and attached to the letter shown at the office.',
   'scan.takePhoto': 'Take a photo',
   'scan.chooseFiles': 'Choose files',
   'scan.selected': 'Ready to upload',
   'scan.remove': 'Remove',
   'scan.upload': 'Upload {count} file(s)',
+  'scan.uploadPdf': 'Upload {count} page(s) as PDF',
+  'scan.uploadMixed': 'Upload PDF and {count} file(s)',
   'scan.uploading': 'Uploading…',
+  'scan.pdfBuilding': 'Building the PDF…',
+  'scan.pdfTooLarge':
+    'The scanned pages are too large to send as one PDF. Remove a page and try again.',
+  'scan.pagesTitle': 'Scanned pages ({count})',
+  'scan.documentsTitle': 'Files to attach ({count})',
+  'scan.pageLabel': 'Page {index}',
+  'scan.moveUp': 'Move up',
+  'scan.moveDown': 'Move down',
+  'scan.edit': 'Crop and rotate',
+  'scan.editTitle': 'Crop and rotate',
+  'scan.editApply': 'Apply',
+  'scan.editApplying': 'Applying…',
+  'scan.editLoading': 'Opening the page…',
+  'scan.editHint': 'Drag the corners to crop, or drag inside the box to move it.',
+  'scan.editLoadFailed': 'This photo could not be opened. Remove it and take another.',
+  'scan.editFailed': 'The page could not be cropped. Try again.',
+  'scan.rotateLeft': 'Rotate left',
+  'scan.rotateRight': 'Rotate right',
   'scan.mobileDoneTitle': 'Uploaded',
   'scan.mobileDoneBody':
     'The document was attached to the letter. You can close this page.',
   'scan.mobileUploadFailed': 'The document could not be uploaded.',
-  'scan.mobileLimit': 'Up to 10 MB per file. PDF, Word or an image.',
+  'scan.mobileLimit':
+    'Up to 10 MB per file. Photos become pages in one PDF; ' +
+    'PDF and Word files are attached as they are.',
   'scan.mobileOptimiseNote':
     'Photos are shrunk automatically so they upload quickly and stay readable.',
   'scan.optimising': 'Optimising photo…',
