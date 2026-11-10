@@ -908,6 +908,13 @@ export const en = Object.freeze({
     '"{name}" cannot be attached. Allowed: pdf, jpg, jpeg, png, tiff, doc, docx.',
   'attachment.tooLarge':
     '"{name}" is {size} MB. The limit is {limit} MB.',
+  'attachment.remove': 'Remove',
+  'attachment.removeTitle': 'Remove attachment',
+  'attachment.removeConfirm': 'Remove "{name}" from this letter?',
+  'attachment.removeHint':
+    'The file will be taken off the letter. This cannot be undone.',
+  'attachment.removing': 'Removing…',
+  'attachment.removeFailed': 'That file could not be removed. Try again.',
 
   'new.formTitle': 'Log a letter',
   'new.backToRegistry': 'Back to the registry',

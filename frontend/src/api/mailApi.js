@@ -640,6 +640,49 @@ export async function downloadAttachment(mailId, attachmentId) {
   return { ...data, blob };
 }
 
+/**
+ * Remove one attachment from a letter that has not been forwarded yet.
+ *
+ * The metadata row is deleted first: it is what makes the file appear on the
+ * letter, so once it is gone the scan is out of the file of record even if the
+ * best-effort storage removal below fails. The bucket object is then removed so
+ * a stray copy is not left behind; that step is deliberately not allowed to
+ * fail the operation, because the row is already gone and re-reporting an error
+ * would make a correct removal look broken.
+ *
+ * `has_attachment` is recomputed from the rows that remain, so the registry's
+ * marker does not stay lit after the last scan is removed.
+ */
+export async function removeAttachment(mailId, attachment) {
+  if (!attachment?.id) throw new Error('Missing attachment.');
+
+  const { data, error } = await supabase
+    .from('mail_attachments')
+    .delete()
+    .eq('id', attachment.id)
+    .eq('mail_record_id', mailId)
+    .select('stored_path');
+  if (error) throw error;
+
+  const storedPath = data?.[0]?.stored_path ?? attachment.stored_path;
+  if (storedPath) {
+    await supabase.storage.from('mail-attachments').remove([storedPath]);
+  }
+
+  const { count } = await supabase
+    .from('mail_attachments')
+    .select('id', { count: 'exact', head: true })
+    .eq('mail_record_id', mailId);
+  if (count != null) {
+    await supabase
+      .from('mail_records')
+      .update({ has_attachment: count > 0 })
+      .eq('id', mailId);
+  }
+
+  return data?.[0] ?? attachment;
+}
+
 export async function update(id, fields) {
   const { data, error } = await supabase.from('mail_records').update(fields).eq('id', id).select().single();
   if (error) throw error;

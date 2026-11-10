@@ -1526,6 +1526,17 @@ CREATE POLICY audit_admin_read ON public.audit_logs FOR SELECT TO authenticated 
 -- mail_attachments
 CREATE POLICY attachments_read ON public.mail_attachments FOR SELECT TO authenticated USING (true);
 CREATE POLICY attachments_write ON public.mail_attachments FOR INSERT TO authenticated WITH CHECK (true);
+-- Removing a mistaken attachment is a correction the clerk may make only while
+-- the letter is still theirs to correct (`Logged`). The mail_records subquery is
+-- itself subject to mail_read, so this cannot reach a letter the caller cannot
+-- see. Existing installs get this policy from patch_attachment_delete.sql.
+CREATE POLICY attachments_delete ON public.mail_attachments FOR DELETE TO authenticated USING (
+  EXISTS (
+    SELECT 1 FROM public.mail_records m
+    WHERE m.id = mail_attachments.mail_record_id
+      AND m.status::text = 'Logged'
+  )
+);
 
 -- completion_submissions. Read is open for the same reason attachments_read is:
 -- mail_read already decides whether the caller can open the letter at all. Only

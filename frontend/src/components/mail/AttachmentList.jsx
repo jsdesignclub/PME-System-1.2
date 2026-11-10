@@ -19,6 +19,7 @@ import { formatBytes, formatDate } from '../../utils/dateUtils.js';
 import { useObjectUrl } from '../../hooks/useObjectUrl.js';
 import { Card } from '../common/Card.jsx';
 import { ErrorNote } from '../common/ErrorNote.jsx';
+import { Modal } from '../common/Modal.jsx';
 import { ALLOWED_EXTENSIONS, extensionOf } from '../../utils/fileTypes.js';
 
 /** The same allowlist the server enforces, so the UI can say it up front. */
@@ -34,12 +35,14 @@ const PREVIEWABLE = new Set([
 
 import { useLanguage } from '../../context/LanguageContext.jsx';
 
-export function AttachmentList({ letterId, attachments, canUpload, onChanged }) {
+export function AttachmentList({ letterId, attachments, canUpload, canRemove, onChanged }) {
   const { t } = useLanguage();
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [previewing, setPreviewing] = useState(null);
+  const [removing, setRemoving] = useState(null);
+  const [removingBusy, setRemovingBusy] = useState(false);
 
   async function download(attachment) {
     setError(null);
@@ -98,6 +101,23 @@ export function AttachmentList({ letterId, attachments, canUpload, onChanged }) 
     }
   }
 
+  async function confirmRemove() {
+    if (!removing) return;
+
+    setRemovingBusy(true);
+    setError(null);
+    try {
+      await mailApi.removeAttachment(letterId, removing);
+      if (previewing?.id === removing.id) setPreviewing(null);
+      setRemoving(null);
+      onChanged();
+    } catch (failure) {
+      setError({ message: errorMessage(failure, t('attachment.removeFailed')) });
+    } finally {
+      setRemovingBusy(false);
+    }
+  }
+
   return (
     <Card title={t('attachment.title', { count: attachments.length })}>
       {attachments.length === 0 ? (
@@ -132,6 +152,16 @@ export function AttachmentList({ letterId, attachments, canUpload, onChanged }) 
                       >
                         {t('attachment.open')}
                       </button>
+                    {canRemove && (
+                      <button
+                        type="button"
+                        onClick={() => setRemoving(attachment)}
+                        disabled={busy || removingBusy}
+                        className="no-print rounded-btn border border-red-200 px-2.5 py-1 text-xs font-medium text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {t('attachment.remove')}
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -180,6 +210,39 @@ export function AttachmentList({ letterId, attachments, canUpload, onChanged }) 
           <ErrorNote>{error.message}</ErrorNote>
         </div>
       )}
+
+      <Modal
+        open={Boolean(removing)}
+        title={t('attachment.removeTitle')}
+        onClose={() => {
+          if (!removingBusy) setRemoving(null);
+        }}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setRemoving(null)}
+              disabled={removingBusy}
+              className="rounded-btn border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={confirmRemove}
+              disabled={removingBusy}
+              className="rounded-btn bg-danger px-4 py-2 text-sm font-medium text-white transition hover:bg-danger-hover disabled:opacity-60"
+            >
+              {removingBusy ? t('attachment.removing') : t('attachment.remove')}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-700">
+          {t('attachment.removeConfirm', { name: removing?.original_name ?? '' })}
+        </p>
+        <p className="mt-2 text-xs text-slate-500">{t('attachment.removeHint')}</p>
+      </Modal>
     </Card>
   );
 }

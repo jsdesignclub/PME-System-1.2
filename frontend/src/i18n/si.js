@@ -903,6 +903,12 @@ export const si = Object.freeze({
     '"{name}" ගොනුව ඇමුණුම් කළ නොහැක. අනුමත: pdf, jpg, jpeg, png, tiff, doc, docx.',
   'attachment.tooLarge':
     '"{name}" {size} MB. සීමාව {limit} MB.',
+  'attachment.remove': 'ඉවත් කරන්න',
+  'attachment.removeTitle': 'ඇමුණුම ඉවත් කරන්න',
+  'attachment.removeConfirm': '"{name}" මෙම ලිපියෙන් ඉවත් කරන්නද?',
+  'attachment.removeHint': 'ගොනුව මෙම ලිපියෙන් ඉවත් වේ. මෙය ආපසු හැරවිය නොහැක.',
+  'attachment.removing': 'ඉවත් කරමින්…',
+  'attachment.removeFailed': 'ගොනුව ඉවත් කළ නොහැකි විය. නැවත උත්සාහ කරන්න.',
 
   'new.formTitle': 'ලිපියක් ඇතුළත් කරන්න',
   'new.backToRegistry': 'ලැයිස්තුවට ආපසු',

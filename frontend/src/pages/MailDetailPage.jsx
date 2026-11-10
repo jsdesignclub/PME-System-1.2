@@ -158,6 +158,13 @@ export default function MailDetailPage() {
     status !== 'Completed' &&
     (hasPermission('CREATE_MAIL') || hasPermission('UPDATE_ACTION_STATUS'));
 
+  // Removing a mistake is only safe while the letter is still with the clerk:
+  // once it has been forwarded the attachment is part of the file the next desk
+  // received. The server's attachments_delete policy enforces the same rule.
+  const canRemove =
+    status === 'Logged' &&
+    (hasPermission('CREATE_MAIL') || hasPermission('UPDATE_ACTION_STATUS'));
+
   // The last day the category's final action may be taken on, if the letter's
   // category defines a maximum. Shared by the metadata field and the clock.
   const completionDue =
@@ -266,6 +273,7 @@ export default function MailDetailPage() {
             letterId={mail.id}
             attachments={attachments ?? []}
             canUpload={canAttach}
+            canRemove={canRemove}
             onChanged={load}
           />
 
