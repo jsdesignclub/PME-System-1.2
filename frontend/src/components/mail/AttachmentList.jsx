@@ -112,7 +112,12 @@ export function AttachmentList({ letterId, attachments, canUpload, canRemove, on
       setRemoving(null);
       onChanged();
     } catch (failure) {
-      setError({ message: errorMessage(failure, t('attachment.removeFailed')) });
+      setError({
+        message:
+          failure?.code === 'ATTACHMENT_DELETE_DENIED'
+            ? t('attachment.removeDenied')
+            : errorMessage(failure, t('attachment.removeFailed')),
+      });
     } finally {
       setRemovingBusy(false);
     }

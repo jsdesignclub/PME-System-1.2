@@ -915,6 +915,8 @@ export const en = Object.freeze({
     'The file will be taken off the letter. This cannot be undone.',
   'attachment.removing': 'Removing…',
   'attachment.removeFailed': 'That file could not be removed. Try again.',
+  'attachment.removeDenied':
+    'The file was not removed. A scan can only be removed while the letter is still at the logging stage, and your role must allow it.',
 
   'new.formTitle': 'Log a letter',
   'new.backToRegistry': 'Back to the registry',

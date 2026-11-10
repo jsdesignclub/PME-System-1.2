@@ -909,6 +909,8 @@ export const si = Object.freeze({
   'attachment.removeHint': 'ගොනුව මෙම ලිපියෙන් ඉවත් වේ. මෙය ආපසු හැරවිය නොහැක.',
   'attachment.removing': 'ඉවත් කරමින්…',
   'attachment.removeFailed': 'ගොනුව ඉවත් කළ නොහැකි විය. නැවත උත්සාහ කරන්න.',
+  'attachment.removeDenied':
+    'ගොනුව ඉවත් නොකෙරුණි. ලිපිය තවමත් ලියාපදිංචි කිරීමේ අවස්ථාවේ පවතින විට පමණක් ස්කෑනයක් ඉවත් කළ හැකි අතර, ඔබේ භූමිකාවට එයට අවසර තිබිය යුතුය.',
 
   'new.formTitle': 'ලිපියක් ඇතුළත් කරන්න',
   'new.backToRegistry': 'ලැයිස්තුවට ආපසු',

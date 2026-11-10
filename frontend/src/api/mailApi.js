@@ -664,7 +664,19 @@ export async function removeAttachment(mailId, attachment) {
     .select('stored_path');
   if (error) throw error;
 
-  const storedPath = data?.[0]?.stored_path ?? attachment.stored_path;
+  // PostgREST reports a successful DELETE even when RLS hid every row from it:
+  // the statement runs, matches nothing, and returns an empty array. Left
+  // unchecked that looks like a removal, the caller reloads, and the file is
+  // still on the letter. Treat "no row came back" as the refusal it is.
+  if (!data?.length) {
+    const denied = new Error(
+      'The attachment row was not deleted. The letter must still be at Logged and the delete policy must be installed.',
+    );
+    denied.code = 'ATTACHMENT_DELETE_DENIED';
+    throw denied;
+  }
+
+  const storedPath = data[0].stored_path ?? attachment.stored_path;
   if (storedPath) {
     await supabase.storage.from('mail-attachments').remove([storedPath]);
   }
