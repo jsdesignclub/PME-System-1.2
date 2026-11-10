@@ -7,10 +7,15 @@
  * means the file that is checked against the 10 MB cap is exactly the file that
  * is stored.
  *
+ * MEMORY IS THE CONSTRAINT ON A PHONE. The builder therefore works one page at
+ * a time: decode a page, draw it at a modest size, hand the JPEG bytes to jsPDF,
+ * then release the canvas before touching the next page. Earlier versions held
+ * every full-resolution canvas and a base64 copy of every page at once, which
+ * Safari reports as "not enough memory" after a handful of camera photos.
+ *
  * `jsPDF` is imported here and this module is loaded with a dynamic `import()`
  * from the phone page, so the PDF writer is fetched only when a batch is
- * actually being combined. A clerk who only sends a ready-made file never pays
- * for it.
+ * actually being combined.
  */
 import { jsPDF } from 'jspdf';
 
@@ -18,10 +23,12 @@ import { loadBitmap } from './imageCompression.js';
 import { MAX_UPLOAD_MB } from './fileTypes.js';
 
 const PAGE_MARGIN_MM = 8;
-const MAX_PAGE_EDGE_PX = 2000;
+
+/** 1600 px on the long edge is legible for a letter and light on memory. */
+const MAX_PAGE_EDGE_PX = 1600;
 
 /** Tried in order until the finished PDF fits the upload cap. */
-const JPEG_QUALITIES = [0.82, 0.68, 0.52, 0.4];
+const JPEG_QUALITIES = [0.72, 0.55];
 
 function fitWithin(width, height, maxEdge) {
   const longest = Math.max(width, height);
@@ -33,11 +40,18 @@ function fitWithin(width, height, maxEdge) {
   };
 }
 
-async function renderPage(file) {
+function toBlob(canvas, quality) {
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+}
+
+async function encodePage(file, quality) {
   const bitmap = await loadBitmap(file);
+  let canvas;
+
   try {
     const fitted = fitWithin(bitmap.width, bitmap.height, MAX_PAGE_EDGE_PX);
-    const canvas = document.createElement('canvas');
+
+    canvas = document.createElement('canvas');
     canvas.width = fitted.width;
     canvas.height = fitted.height;
 
@@ -48,16 +62,30 @@ async function renderPage(file) {
     context.fillRect(0, 0, fitted.width, fitted.height);
     context.drawImage(bitmap, 0, 0, fitted.width, fitted.height);
 
-    return { canvas, width: fitted.width, height: fitted.height };
+    const blob = await toBlob(canvas, quality);
+    if (!blob) throw new Error('Could not encode the page.');
+
+    // JPEG bytes, not a base64 data URL: the bytes are about a third smaller and
+    // jsPDF accepts them directly, so no large string is held per page.
+    return {
+      bytes: new Uint8Array(await blob.arrayBuffer()),
+      width: fitted.width,
+      height: fitted.height,
+    };
   } finally {
+    if (canvas) {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
     bitmap.close?.();
   }
 }
 
-function assemblePdf(pages, quality) {
+async function assemblePdf(files, quality) {
   let pdf;
 
-  pages.forEach((page, index) => {
+  for (let index = 0; index < files.length; index += 1) {
+    const page = await encodePage(files[index], quality);
     const orientation = page.width > page.height ? 'landscape' : 'portrait';
 
     if (index === 0) {
@@ -80,15 +108,8 @@ function assemblePdf(pages, quality) {
     const x = (pageWidth - width) / 2;
     const y = (pageHeight - height) / 2;
 
-    pdf.addImage(
-      page.canvas.toDataURL('image/jpeg', quality),
-      'JPEG',
-      x,
-      y,
-      width,
-      height,
-    );
-  });
+    pdf.addImage(page.bytes, 'JPEG', x, y, width, height);
+  }
 
   return pdf.output('blob');
 }
@@ -110,8 +131,8 @@ export function pdfFileName(date = new Date()) {
  * Join the pages, in order, into one PDF.
  *
  * Quality is stepped down only when the finished file would breach the upload
- * cap. The thrown error carries `code = 'PDF_TOO_LARGE'` so the page can word
- * the failure in the reader's language instead of repeating an English string.
+ * cap. The thrown errors carry a `code` so the page can word the failure in the
+ * reader's language instead of repeating an English string.
  */
 export async function buildPdfFile(files, { name } = {}) {
   if (!files?.length) {
@@ -120,14 +141,11 @@ export async function buildPdfFile(files, { name } = {}) {
     throw empty;
   }
 
-  const pages = [];
-  for (const file of files) pages.push(await renderPage(file));
-
   const limit = MAX_UPLOAD_MB * 1024 * 1024;
   let lastSize = 0;
 
   for (const quality of JPEG_QUALITIES) {
-    const blob = assemblePdf(pages, quality);
+    const blob = await assemblePdf(files, quality);
     lastSize = blob.size;
     if (blob.size <= limit) {
       return new File([blob], name ?? pdfFileName(), {

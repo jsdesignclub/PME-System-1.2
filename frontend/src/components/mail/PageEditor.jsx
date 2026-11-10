@@ -21,6 +21,9 @@ import { ErrorNote } from '../common/ErrorNote.jsx';
 const FULL_CROP = { x: 0, y: 0, w: 1, h: 1 };
 const MIN_CROP = 0.08;
 
+/** The preview never needs the camera's full pixel count. */
+const MAX_PREVIEW_EDGE = 1600;
+
 const CORNERS = [
   { key: 'nw', className: '-left-3 -top-3 cursor-nwse-resize' },
   { key: 'ne', className: '-right-3 -top-3 cursor-nesw-resize' },
@@ -128,8 +131,15 @@ export function PageEditor({ open, page, onClose, onApply }) {
     if (!canvas || !bitmap) return;
 
     const sideways = rotation % 180 !== 0;
-    const width = sideways ? bitmap.height : bitmap.width;
-    const height = sideways ? bitmap.width : bitmap.height;
+    const fullWidth = sideways ? bitmap.height : bitmap.width;
+    const fullHeight = sideways ? bitmap.width : bitmap.height;
+
+    const scale = Math.min(
+      1,
+      MAX_PREVIEW_EDGE / Math.max(fullWidth, fullHeight),
+    );
+    const width = Math.max(1, Math.round(fullWidth * scale));
+    const height = Math.max(1, Math.round(fullHeight * scale));
 
     canvas.width = width;
     canvas.height = height;
@@ -140,7 +150,13 @@ export function PageEditor({ open, page, onClose, onApply }) {
     context.save();
     context.translate(width / 2, height / 2);
     context.rotate((rotation * Math.PI) / 180);
-    context.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
+    context.drawImage(
+      bitmap,
+      -(bitmap.width * scale) / 2,
+      -(bitmap.height * scale) / 2,
+      bitmap.width * scale,
+      bitmap.height * scale,
+    );
     context.restore();
   }, [bitmap, rotation]);
 

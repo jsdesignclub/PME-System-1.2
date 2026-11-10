@@ -14,6 +14,9 @@ import { loadBitmap } from './imageCompression.js';
 
 const FULL_CROP = Object.freeze({ x: 0, y: 0, w: 1, h: 1 });
 
+/** A cropped page never needs more than this; keeps phone canvas memory small. */
+const MAX_OUTPUT_EDGE = 2000;
+
 function rotatedSize(width, height, rotation) {
   return rotation % 180 === 0
     ? { width, height }
@@ -33,6 +36,11 @@ function toBlob(canvas, type, quality) {
 /**
  * Apply a rotation and a normalised crop to one page, returning a new JPEG.
  *
+ * The crop is drawn straight into the output canvas, so no full-resolution
+ * intermediate canvas is held alongside it. The output is capped at
+ * `MAX_OUTPUT_EDGE`, and the canvas is released as soon as the JPEG exists —
+ * two things that matter on a phone, where a 12 MP page is ~48 MB of pixels.
+ *
  * Failure returns the original file, as `compressImage` does: a page that
  * cannot be re-encoded is better uploaded untouched than lost.
  */
@@ -46,35 +54,39 @@ export async function flattenPage(file, { rotation = 0, crop = FULL_CROP } = {})
     return file;
   }
 
+  let output;
   try {
     const size = rotatedSize(bitmap.width, bitmap.height, rotation);
 
-    const source = document.createElement('canvas');
-    source.width = size.width;
-    source.height = size.height;
-    const sourceContext = source.getContext('2d');
-    if (!sourceContext) return file;
+    const cropX = Math.round(crop.x * size.width);
+    const cropY = Math.round(crop.y * size.height);
+    const cropWidth = Math.max(1, Math.round(crop.w * size.width));
+    const cropHeight = Math.max(1, Math.round(crop.h * size.height));
 
-    sourceContext.translate(size.width / 2, size.height / 2);
-    sourceContext.rotate((rotation * Math.PI) / 180);
-    sourceContext.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
+    const scale = Math.min(
+      1,
+      MAX_OUTPUT_EDGE / Math.max(cropWidth, cropHeight),
+    );
+    const outputWidth = Math.max(1, Math.round(cropWidth * scale));
+    const outputHeight = Math.max(1, Math.round(cropHeight * scale));
 
-    const x = Math.round(crop.x * size.width);
-    const y = Math.round(crop.y * size.height);
-    const width = Math.max(1, Math.round(crop.w * size.width));
-    const height = Math.max(1, Math.round(crop.h * size.height));
+    output = document.createElement('canvas');
+    output.width = outputWidth;
+    output.height = outputHeight;
+    const context = output.getContext('2d');
+    if (!context) return file;
 
-    const output = document.createElement('canvas');
-    output.width = width;
-    output.height = height;
-    const outputContext = output.getContext('2d');
-    if (!outputContext) return file;
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, outputWidth, outputHeight);
 
-    outputContext.fillStyle = '#ffffff';
-    outputContext.fillRect(0, 0, width, height);
-    outputContext.drawImage(source, x, y, width, height, 0, 0, width, height);
+    // Map the rotated page onto the output so the crop rectangle lands at (0,0).
+    context.scale(scale, scale);
+    context.translate(-cropX, -cropY);
+    context.translate(size.width / 2, size.height / 2);
+    context.rotate((rotation * Math.PI) / 180);
+    context.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
 
-    const blob = await toBlob(output, 'image/jpeg', 0.9);
+    const blob = await toBlob(output, 'image/jpeg', 0.88);
     if (!blob) return file;
 
     return new File([blob], replaceExtension(file.name, '.jpg'), {
@@ -84,6 +96,10 @@ export async function flattenPage(file, { rotation = 0, crop = FULL_CROP } = {})
   } catch {
     return file;
   } finally {
+    if (output) {
+      output.width = 0;
+      output.height = 0;
+    }
     bitmap.close?.();
   }
 }

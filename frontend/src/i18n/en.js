@@ -1178,6 +1178,8 @@ export const en = Object.freeze({
   'scan.pdfBuilding': 'Building the PDF…',
   'scan.pdfTooLarge':
     'The scanned pages are too large to send as one PDF. Remove a page and try again.',
+  'scan.pdfOutOfMemory':
+    'The phone ran out of memory while preparing the PDF. Remove some pages and try again.',
   'scan.pagesTitle': 'Scanned pages ({count})',
   'scan.documentsTitle': 'Files to attach ({count})',
   'scan.pageLabel': 'Page {index}',

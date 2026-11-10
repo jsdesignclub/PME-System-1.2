@@ -169,10 +169,18 @@ export default function MobileUploadPage() {
       setDocuments([]);
       setDone(true);
     } catch (failure) {
+      const message = String(failure?.message ?? '');
+      const outOfMemory =
+        failure?.name === 'RangeError' ||
+        failure?.name === 'NotEnoughMemoryError' ||
+        /memory|allocat/i.test(message);
+
       setError(
-        failure?.code === 'PDF_TOO_LARGE'
-          ? t('scan.pdfTooLarge')
-          : errorMessage(failure, t('scan.mobileUploadFailed')),
+        outOfMemory
+          ? t('scan.pdfOutOfMemory')
+          : failure?.code === 'PDF_TOO_LARGE'
+            ? t('scan.pdfTooLarge')
+            : errorMessage(failure, t('scan.mobileUploadFailed')),
       );
     } finally {
       setBusy(false);

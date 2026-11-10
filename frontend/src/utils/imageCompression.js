@@ -111,6 +111,11 @@ export async function compressImage(file, options = {}) {
       blob = await toBlob(canvas, 'image/jpeg', quality);
     }
 
+    // The canvas is not needed once the JPEG exists, and a 2000px canvas is a
+    // few dozen megabytes of pixels on a phone. Release it before returning.
+    canvas.width = 0;
+    canvas.height = 0;
+
     if (!blob) return file;
     if (blob.size >= file.size) return file;
 

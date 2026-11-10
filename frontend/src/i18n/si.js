@@ -1168,6 +1168,8 @@ export const si = Object.freeze({
   'scan.pdfBuilding': 'PDF සාදමින්…',
   'scan.pdfTooLarge':
     'පරිලෝකනය කළ පිටු එක් PDF එකක් ලෙස යැවීමට විශාල වැඩිය. පිටුවක් ඉවත් කර නැවත උත්සාහ කරන්න.',
+  'scan.pdfOutOfMemory':
+    'PDF සකසමින් යන විට දුරකථනයේ මතකය අවසන් විය. පිටු කිහිපයක් ඉවත් කර නැවත උත්සාහ කරන්න.',
   'scan.pagesTitle': 'පරිලෝකනය කළ පිටු ({count})',
   'scan.documentsTitle': 'අමුණන ගොනු ({count})',
   'scan.pageLabel': 'පිටුව {index}',
