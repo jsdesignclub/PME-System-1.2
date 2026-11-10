@@ -12,7 +12,7 @@
  * cropped and rotated and are joined into one PDF; a PDF or Word file is carried
  * through untouched. One ticket can carry all of it.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ArrowDown, ArrowUp, Crop, Trash } from 'lucide-react';
 
@@ -20,7 +20,7 @@ import * as uploadTicketApi from '../api/uploadTicketApi.js';
 import { errorMessage } from '../api/axiosClient.js';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { ALLOWED_EXTENSIONS, MAX_UPLOAD_MB, extensionOf } from '../utils/fileTypes.js';
-import { compressImage } from '../utils/imageCompression.js';
+import { preparePhotoPage } from '../utils/photoPage.js';
 import { formatBytes } from '../utils/dateUtils.js';
 import { ErrorNote } from '../components/common/ErrorNote.jsx';
 import { PageEditor } from '../components/mail/PageEditor.jsx';
@@ -45,19 +45,6 @@ export default function MobileUploadPage() {
   const [done, setDone] = useState(false);
   const cameraInput = useRef(null);
   const fileInput = useRef(null);
-
-  // Preview URLs are revoked when a page leaves the list and, as a final sweep,
-  // when the page unmounts. A ref holds the latest list so the unmount effect can
-  // stay empty and run once, rather than revoking live URLs on every edit.
-  const pagesRef = useRef([]);
-  useEffect(() => {
-    pagesRef.current = pages;
-  }, [pages]);
-  useEffect(() => {
-    return () => {
-      for (const page of pagesRef.current) URL.revokeObjectURL(page.preview);
-    };
-  }, []);
 
   /**
    * Add files after checking the same rules the desktop form states up front.
@@ -96,15 +83,19 @@ export default function MobileUploadPage() {
       const newDocuments = [];
 
       for (const file of chosen) {
-        const prepared = await compressImage(file);
-        if (PAGE_EXTENSIONS.has(extensionOf(prepared.name))) {
+        if (PAGE_EXTENSIONS.has(extensionOf(file.name))) {
+          // Decode once, at a bounded size, and remember the pixel size so the
+          // page can later go into the PDF without being decoded again.
+          const prepared = await preparePhotoPage(file);
           newPages.push({
             id: nextId(),
-            file: prepared,
-            preview: URL.createObjectURL(prepared),
+            file: prepared.file,
+            preview: prepared.preview,
+            width: prepared.width,
+            height: prepared.height,
           });
         } else {
-          newDocuments.push({ id: nextId(), file: prepared });
+          newDocuments.push({ id: nextId(), file });
         }
       }
 
@@ -112,14 +103,19 @@ export default function MobileUploadPage() {
       if (newDocuments.length > 0) {
         setDocuments((current) => [...current, ...newDocuments]);
       }
+    } catch (failure) {
+      const lowMemory = /memory|allocat/i.test(String(failure?.message ?? ''));
+      setError(
+        failure?.code === 'PHOTO_UNREADABLE' || lowMemory
+          ? t('scan.photoReadFailed')
+          : errorMessage(failure, t('scan.mobileUploadFailed')),
+      );
     } finally {
       setPreparing(false);
     }
   }
 
   function removePage(id) {
-    const target = pages.find((page) => page.id === id);
-    if (target) URL.revokeObjectURL(target.preview);
     setPages((current) => current.filter((page) => page.id !== id));
   }
 
@@ -140,11 +136,16 @@ export default function MobileUploadPage() {
     });
   }
 
-  function applyEdit(id, file) {
+  function applyEdit(id, result) {
     const target = pages.find((page) => page.id === id);
     if (!target) return;
-    URL.revokeObjectURL(target.preview);
-    const next = { ...target, file, preview: URL.createObjectURL(file) };
+    const next = {
+      ...target,
+      file: result.file,
+      width: result.width ?? target.width,
+      height: result.height ?? target.height,
+      preview: result.preview ?? target.preview,
+    };
     setPages((current) => current.map((page) => (page.id === id ? next : page)));
   }
 
@@ -158,13 +159,12 @@ export default function MobileUploadPage() {
 
       if (pages.length > 0) {
         const { buildPdfFile } = await import('../utils/documentScan.js');
-        files.push(await buildPdfFile(pages.map((page) => page.file)));
+        files.push(await buildPdfFile(pages));
       }
       for (const document of documents) files.push(document.file);
 
       await uploadTicketApi.uploadFiles(token, files);
 
-      for (const page of pages) URL.revokeObjectURL(page.preview);
       setPages([]);
       setDocuments([]);
       setDone(true);

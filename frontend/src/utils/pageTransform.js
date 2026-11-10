@@ -11,6 +11,7 @@
  * preview is scaled.
  */
 import { loadBitmap } from './imageCompression.js';
+import { thumbnailDataUrl } from './thumbnail.js';
 
 const FULL_CROP = Object.freeze({ x: 0, y: 0, w: 1, h: 1 });
 
@@ -34,24 +35,28 @@ function toBlob(canvas, type, quality) {
 }
 
 /**
- * Apply a rotation and a normalised crop to one page, returning a new JPEG.
+ * Apply a rotation and a normalised crop to one page.
+ *
+ * Returns `{ file, width, height }`, where `width`/`height` are the new JPEG's
+ * pixel size so the PDF writer can place it without decoding again. `width` and
+ * `height` are null when the page could not be re-encoded and the original was
+ * returned unchanged.
  *
  * The crop is drawn straight into the output canvas, so no full-resolution
- * intermediate canvas is held alongside it. The output is capped at
- * `MAX_OUTPUT_EDGE`, and the canvas is released as soon as the JPEG exists —
- * two things that matter on a phone, where a 12 MP page is ~48 MB of pixels.
+ * intermediate canvas is held alongside it, and the canvas is released as soon
+ * as the JPEG exists.
  *
  * Failure returns the original file, as `compressImage` does: a page that
  * cannot be re-encoded is better uploaded untouched than lost.
  */
 export async function flattenPage(file, { rotation = 0, crop = FULL_CROP } = {}) {
-  if (!file) return file;
+  if (!file) return { file, width: null, height: null };
 
   let bitmap;
   try {
     bitmap = await loadBitmap(file);
   } catch {
-    return file;
+    return { file, width: null, height: null };
   }
 
   let output;
@@ -74,7 +79,7 @@ export async function flattenPage(file, { rotation = 0, crop = FULL_CROP } = {})
     output.width = outputWidth;
     output.height = outputHeight;
     const context = output.getContext('2d');
-    if (!context) return file;
+    if (!context) return { file, width: null, height: null };
 
     context.fillStyle = '#ffffff';
     context.fillRect(0, 0, outputWidth, outputHeight);
@@ -87,14 +92,19 @@ export async function flattenPage(file, { rotation = 0, crop = FULL_CROP } = {})
     context.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
 
     const blob = await toBlob(output, 'image/jpeg', 0.88);
-    if (!blob) return file;
+    if (!blob) return { file, width: null, height: null };
 
-    return new File([blob], replaceExtension(file.name, '.jpg'), {
-      type: 'image/jpeg',
-      lastModified: Date.now(),
-    });
+    return {
+      file: new File([blob], replaceExtension(file.name, '.jpg'), {
+        type: 'image/jpeg',
+        lastModified: Date.now(),
+      }),
+      width: outputWidth,
+      height: outputHeight,
+      preview: thumbnailDataUrl(output),
+    };
   } catch {
-    return file;
+    return { file, width: null, height: null };
   } finally {
     if (output) {
       output.width = 0;

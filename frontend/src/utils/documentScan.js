@@ -1,17 +1,15 @@
 /**
- * Turning photographed pages into one scanned PDF.
+ * Turning prepared pages into one scanned PDF.
  *
- * The phone page lets a clerk crop and rotate each captured sheet, then joins
- * the whole batch into a single PDF before upload. Doing this on the phone,
- * rather than server-side, keeps the office free of an image-processing job and
- * means the file that is checked against the 10 MB cap is exactly the file that
- * is stored.
+ * Pages arrive from `photoPage.js` already downscaled, re-encoded as JPEG, and
+ * labelled with their pixel size. In the normal path this module therefore does
+ * NO image decoding and NO canvas work: it reads each page's JPEG bytes and
+ * hands them to jsPDF. That matters on a phone, where decoding a 48 MP camera
+ * file or holding several full-size canvases at once is what produces the
+ * browser's "not enough memory" failure.
  *
- * MEMORY IS THE CONSTRAINT ON A PHONE. The builder therefore works one page at
- * a time: decode a page, draw it at a modest size, hand the JPEG bytes to jsPDF,
- * then release the canvas before touching the next page. Earlier versions held
- * every full-resolution canvas and a base64 copy of every page at once, which
- * Safari reports as "not enough memory" after a handful of camera photos.
+ * The decode path only runs as a fallback, for a page whose size is unknown, or
+ * when the finished PDF is over the upload cap and the pages must be shrunk.
  *
  * `jsPDF` is imported here and this module is loaded with a dynamic `import()`
  * from the phone page, so the PDF writer is fetched only when a batch is
@@ -24,11 +22,9 @@ import { MAX_UPLOAD_MB } from './fileTypes.js';
 
 const PAGE_MARGIN_MM = 8;
 
-/** 1600 px on the long edge is legible for a letter and light on memory. */
-const MAX_PAGE_EDGE_PX = 1600;
-
-/** Tried in order until the finished PDF fits the upload cap. */
-const JPEG_QUALITIES = [0.72, 0.55];
+/** Size used when a page has to be decoded here rather than taken as-is. */
+const FALLBACK_EDGE_PX = 1600;
+const SHRINK_EDGE_PX = 1200;
 
 function fitWithin(width, height, maxEdge) {
   const longest = Math.max(width, height);
@@ -44,12 +40,12 @@ function toBlob(canvas, quality) {
   return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
 }
 
-async function encodePage(file, quality) {
+async function encodePage(file, quality, maxEdge) {
   const bitmap = await loadBitmap(file);
   let canvas;
 
   try {
-    const fitted = fitWithin(bitmap.width, bitmap.height, MAX_PAGE_EDGE_PX);
+    const fitted = fitWithin(bitmap.width, bitmap.height, maxEdge);
 
     canvas = document.createElement('canvas');
     canvas.width = fitted.width;
@@ -65,8 +61,6 @@ async function encodePage(file, quality) {
     const blob = await toBlob(canvas, quality);
     if (!blob) throw new Error('Could not encode the page.');
 
-    // JPEG bytes, not a base64 data URL: the bytes are about a third smaller and
-    // jsPDF accepts them directly, so no large string is held per page.
     return {
       bytes: new Uint8Array(await blob.arrayBuffer()),
       width: fitted.width,
@@ -81,11 +75,29 @@ async function encodePage(file, quality) {
   }
 }
 
-async function assemblePdf(files, quality) {
+function fileOf(page) {
+  return page?.file ?? page;
+}
+
+async function pageBytes(page, { reencode, quality, maxEdge }) {
+  const file = fileOf(page);
+
+  if (!reencode && page?.width && page?.height) {
+    return {
+      bytes: new Uint8Array(await file.arrayBuffer()),
+      width: page.width,
+      height: page.height,
+    };
+  }
+
+  return encodePage(file, quality, maxEdge);
+}
+
+async function assemblePdf(pages, options) {
   let pdf;
 
-  for (let index = 0; index < files.length; index += 1) {
-    const page = await encodePage(files[index], quality);
+  for (let index = 0; index < pages.length; index += 1) {
+    const page = await pageBytes(pages[index], options);
     const orientation = page.width > page.height ? 'landscape' : 'portrait';
 
     if (index === 0) {
@@ -114,6 +126,13 @@ async function assemblePdf(files, quality) {
   return pdf.output('blob');
 }
 
+function asFile(blob, name) {
+  return new File([blob], name ?? pdfFileName(), {
+    type: 'application/pdf',
+    lastModified: Date.now(),
+  });
+}
+
 /** `scan-20260919-1430.pdf`, dated so two scans never collide. */
 export function pdfFileName(date = new Date()) {
   const stamp = [
@@ -130,33 +149,38 @@ export function pdfFileName(date = new Date()) {
 /**
  * Join the pages, in order, into one PDF.
  *
- * Quality is stepped down only when the finished file would breach the upload
- * cap. The thrown errors carry a `code` so the page can word the failure in the
- * reader's language instead of repeating an English string.
+ * The first attempt uses the JPEG bytes already stored on each page. Only if
+ * that file breaches the upload cap are the pages decoded and re-encoded
+ * smaller. The thrown errors carry a `code` so the page can word the failure in
+ * the reader's language.
  */
-export async function buildPdfFile(files, { name } = {}) {
-  if (!files?.length) {
+export async function buildPdfFile(pages, { name } = {}) {
+  if (!pages?.length) {
     const empty = new Error('There is nothing to combine.');
     empty.code = 'PDF_EMPTY';
     throw empty;
   }
 
   const limit = MAX_UPLOAD_MB * 1024 * 1024;
-  let lastSize = 0;
 
-  for (const quality of JPEG_QUALITIES) {
-    const blob = await assemblePdf(files, quality);
-    lastSize = blob.size;
-    if (blob.size <= limit) {
-      return new File([blob], name ?? pdfFileName(), {
-        type: 'application/pdf',
-        lastModified: Date.now(),
-      });
-    }
-  }
+  let blob = await assemblePdf(pages, {
+    reencode: false,
+    quality: 0.72,
+    maxEdge: FALLBACK_EDGE_PX,
+  });
+
+  if (blob.size <= limit) return asFile(blob, name);
+
+  blob = await assemblePdf(pages, {
+    reencode: true,
+    quality: 0.55,
+    maxEdge: SHRINK_EDGE_PX,
+  });
+
+  if (blob.size <= limit) return asFile(blob, name);
 
   const tooLarge = new Error('The scanned pages are too large to send as one PDF.');
   tooLarge.code = 'PDF_TOO_LARGE';
-  tooLarge.size = lastSize;
+  tooLarge.size = blob.size;
   throw tooLarge;
 }

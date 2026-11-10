@@ -1180,6 +1180,8 @@ export const en = Object.freeze({
     'The scanned pages are too large to send as one PDF. Remove a page and try again.',
   'scan.pdfOutOfMemory':
     'The phone ran out of memory while preparing the PDF. Remove some pages and try again.',
+  'scan.photoReadFailed':
+    'This photo could not be read — the phone may be low on memory or the format is unsupported. Try another photo or file.',
   'scan.pagesTitle': 'Scanned pages ({count})',
   'scan.documentsTitle': 'Files to attach ({count})',
   'scan.pageLabel': 'Page {index}',
