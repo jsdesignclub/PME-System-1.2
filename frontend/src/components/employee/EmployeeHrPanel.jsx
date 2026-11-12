@@ -63,17 +63,41 @@ const INPUT =
  */
 const PROFILE_FIELDS = [
   { key: 'date_of_birth', label: 'employee.dateOfBirth', date: true },
-  { key: 'gender', label: 'employee.gender' },
-  { key: 'marital_status', label: 'employee.maritalStatus' },
-  { key: 'nationality', label: 'employee.nationality' },
-  { key: 'blood_group', label: 'employee.bloodGroup' },
+  {
+    key: 'gender',
+    label: 'employee.gender',
+    options: ['Male', 'Female', 'Other'],
+  },
+  {
+    key: 'marital_status',
+    label: 'employee.maritalStatus',
+    options: ['Single', 'Married', 'Divorced', 'Widowed'],
+  },
+  {
+    key: 'nationality',
+    label: 'employee.nationality',
+    options: ['Sinhala', 'Tamil', 'Burgher', 'Indian Tamil', 'Others'],
+  },
+  {
+    key: 'blood_group',
+    label: 'employee.bloodGroup',
+    options: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'],
+  },
   { key: 'phone', label: 'employee.phone', input: 'tel' },
   { key: 'personal_email', label: 'employee.personalEmail', input: 'email' },
-  { key: 'employment_type', label: 'employee.employmentType' },
+  {
+    key: 'employment_type',
+    label: 'employee.employmentType',
+    options: ['Permanent', 'Temporary', 'Contract', 'Casual'],
+  },
   { key: 'join_date', label: 'employee.joinDate', date: true },
   { key: 'confirmation_date', label: 'employee.confirmationDate', date: true },
   { key: 'retirement_date', label: 'employee.retirementDate', date: true },
-  { key: 'service_grade', label: 'employee.serviceGrade' },
+  {
+    key: 'service_grade',
+    label: 'employee.serviceGrade',
+    options: ['Grade I', 'Grade II', 'Grade III'],
+  },
   { key: 'salary_scale', label: 'employee.salaryScale' },
   { key: 'emergency_contact_name', label: 'employee.emergencyContactName' },
   { key: 'emergency_contact_phone', label: 'employee.emergencyContactPhone', input: 'tel' },
@@ -377,6 +401,7 @@ export function EmployeeHrPanel({ officerId, person, canEdit, tab }) {
       {recordDialog?.type === 'profile' && (
         <DetailsDialog
           record={recordDialog.record}
+          person={person}
           failure={recordFailure}
           onClose={() => {
             clearRecordFailure();
@@ -472,28 +497,34 @@ function ProfileBlock({ person, employee, loading, failure, canEdit, onEdit }) {
         <Spinner label={t('officers.loadingProfile')} />
       ) : failure ? (
         <ErrorNote>{failure}</ErrorNote>
-      ) : !employee ? (
-        <EmptyState title={t('officers.profileEmpty')} />
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-slate-600">
-            <span className="font-medium text-slate-800">{person?.designation}</span>
             {person?.department?.name && <span>{person.department.name}</span>}
             {person?.nic_no && <span className="font-mono text-xs">{person.nic_no}</span>}
           </div>
 
           <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
-            {PROFILE_FIELDS.map(({ key, label, date, wide }) => (
-              <div key={key} className={wide ? 'sm:col-span-2' : ''}>
-                <dt className="text-xs font-medium tracking-wide text-slate-500 uppercase">
-                  {t(label)}
-                </dt>
-                <dd className="mt-0.5 text-sm whitespace-pre-line text-slate-800">
-                  {date ? formatDate(employee[key]) : employee[key] || '—'}
-                </dd>
-              </div>
-            ))}
+            <div>
+              <dt className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+                {t('employee.currentDesignation')}
+              </dt>
+              <dd className="mt-0.5 text-sm text-slate-800">{person?.designation || '—'}</dd>
+            </div>
+            {employee &&
+              PROFILE_FIELDS.map(({ key, label, date, wide }) => (
+                <div key={key} className={wide ? 'sm:col-span-2' : ''}>
+                  <dt className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+                    {t(label)}
+                  </dt>
+                  <dd className="mt-0.5 text-sm whitespace-pre-line text-slate-800">
+                    {date ? formatDate(employee[key]) : employee[key] || '—'}
+                  </dd>
+                </div>
+              ))}
           </dl>
+
+          {!employee && <EmptyState title={t('officers.profileEmpty')} />}
         </>
       )}
     </div>
@@ -822,7 +853,7 @@ function FormField({ label, children, wide }) {
   );
 }
 
-function DetailsDialog({ record, failure, onClose, onSave }) {
+function DetailsDialog({ record, person, failure, onClose, onSave }) {
   const { t } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState('');
@@ -888,7 +919,14 @@ function DetailsDialog({ record, failure, onClose, onSave }) {
         {failure && <ErrorNote>{failure.message}</ErrorNote>}
 
         <div className="grid gap-3 sm:grid-cols-2">
-          {PROFILE_FIELDS.map(({ key, label, date, wide, input }) => (
+          <FormField label={t('employee.currentDesignation')} wide>
+            <input
+              value={person?.designation ?? ''}
+              readOnly
+              className={`${INPUT} bg-slate-200 text-slate-600`}
+            />
+          </FormField>
+          {PROFILE_FIELDS.map(({ key, label, date, wide, input, options }) => (
             <FormField key={key} label={t(label)} wide={wide}>
               {date ? (
                 <input
@@ -897,6 +935,22 @@ function DetailsDialog({ record, failure, onClose, onSave }) {
                   onChange={(event) => update(key, event.target.value)}
                   className={INPUT}
                 />
+              ) : options ? (
+                <select
+                  value={fields[key]}
+                  onChange={(event) => update(key, event.target.value)}
+                  className={INPUT}
+                >
+                  <option value="">{t('employee.selectOption')}</option>
+                  {options.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                  {fields[key] && !options.includes(fields[key]) && (
+                    <option value={fields[key]}>{fields[key]}</option>
+                  )}
+                </select>
               ) : wide ? (
                 <textarea
                   rows={2}

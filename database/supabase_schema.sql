@@ -718,15 +718,17 @@ $$;
 -- ministry. This function is SECURITY DEFINER: it reads rows, deliberately
 -- ignoring RLS, and is the ONLY aggregate source for the dashboard.
 --
--- Two scopes, decided by the caller's profile:
+-- Three scopes, decided by the caller's profile:
 --   * ADMIN / SECRETARY / CHIEF_CLERK / AO, and a CENTRAL clerk — the ministry.
---   * an ordinary SUBJECT_CLERK — their own BRANCH only (department_id). A branch
---     subject clerk runs the letters of one branch and must see that branch's
---     progress, not another branch's.
--- Officers are refused: they work a single letter, and their queue is the queue
--- dashboard, not a branch of figures. It returns the columns, not a finished
--- summary, so the dashboard's aggregation and the shape its charts expect stay in
--- one place (the stats() function in frontend/src/api/mailApi.js).
+--   * an ordinary SUBJECT_CLERK / DEPARTMENT_HEAD — their own BRANCH only
+--     (department_id). A branch clerk runs the letters of one branch and must see
+--     that branch's progress, not another branch's.
+--   * OFFICER / TRANSPORT_OFFICER — only the letters assigned to them. Their
+--     dashboard is a performance view of their own queue; it must never count a
+--     colleague's work. Confidential letters are excluded, matching mail_read.
+-- It returns the columns, not a finished summary, so the dashboard's aggregation
+-- and the shape its charts expect stay in one place (the stats() function in
+-- frontend/src/api/mailApi.js).
 CREATE OR REPLACE FUNCTION public.mail_stats_rows()
 RETURNS TABLE (
   status       text,
@@ -749,11 +751,22 @@ BEGIN
    WHERE p.id = auth.uid();
 
   IF v_profile.role IS NULL
-     OR v_profile.role::text NOT IN ('ADMIN','SECRETARY','CHIEF_CLERK','AO','SUBJECT_CLERK','DEPARTMENT_HEAD') THEN
+     OR v_profile.role::text NOT IN (
+       'ADMIN','SECRETARY','CHIEF_CLERK','AO','SUBJECT_CLERK','DEPARTMENT_HEAD',
+       'OFFICER','TRANSPORT_OFFICER'
+     ) THEN
     RAISE EXCEPTION 'Not authorized to read mail statistics' USING ERRCODE = '42501';
   END IF;
 
-  IF (v_profile.role::text = 'SUBJECT_CLERK' OR v_profile.role::text = 'DEPARTMENT_HEAD') AND NOT v_profile.is_central_clerk THEN
+  IF v_profile.role::text IN ('OFFICER','TRANSPORT_OFFICER') THEN
+    -- An officer's dashboard is their own queue. Confidential letters are
+    -- excluded for the same reason mail_read hides them from this role.
+    RETURN QUERY
+      SELECT m.status::text, m.priority::text, m.category::text, m.sender_type::text, m.created_at
+      FROM public.mail_records m
+      WHERE m.assigned_officer_id = auth.uid()
+        AND m.priority::text <> 'Confidential';
+  ELSIF (v_profile.role::text = 'SUBJECT_CLERK' OR v_profile.role::text = 'DEPARTMENT_HEAD') AND NOT v_profile.is_central_clerk THEN
     -- A branch clerk sees their branch and nothing else. A clerk with no
     -- department sees an empty dashboard rather than every branch's figures.
     RETURN QUERY

@@ -262,6 +262,8 @@ export const en = Object.freeze({
 
   // --- Employee HR details -------------------------------------------------
   'employee.dateOfBirth': 'Date of birth',
+  'employee.selectOption': 'Select…',
+  'employee.currentDesignation': 'Current designation',
   'employee.gender': 'Gender',
   'employee.maritalStatus': 'Marital status',
   'employee.nationality': 'Nationality',
@@ -552,8 +554,15 @@ export const en = Object.freeze({
   'dashboard.byPriorityHint': 'Select a priority to list its letters.',
   'dashboard.bySenderType': 'By sender type',
   'dashboard.bySenderTypeHint': 'Who the ministry is receiving from.',
+  'dashboard.myByStateHint':
+    'Where your assigned files sit right now — select a state to list them.',
+  'dashboard.mySenderTypeHint': 'Who your assigned letters come from.',
+  'dashboard.myLetters': 'My letters',
+  'dashboard.myLettersHint': 'Every letter assigned to you',
   'dashboard.latestLetters': 'Latest letters',
   'dashboard.latestHint': 'The six most recently received.',
+  'dashboard.myLatestLetters': 'My latest letters',
+  'dashboard.myLatestHint': 'The six most recently assigned to you.',
   'dashboard.openRegistry': 'Open the registry',
   'dashboard.noLetters': 'No letters yet.',
   'dashboard.lettersOnRecord': 'Letters on record',

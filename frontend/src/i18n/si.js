@@ -271,6 +271,8 @@ export const si = Object.freeze({
 
   // --- Employee HR details -------------------------------------------------
   'employee.dateOfBirth': 'උපන් දිනය',
+  'employee.selectOption': 'තෝරන්න…',
+  'employee.currentDesignation': 'වත්මන් තනතුර',
   'employee.gender': 'ස්ත්‍රී/පුරුෂ භාවය',
   'employee.maritalStatus': 'විවාහ තත්ත්වය',
   'employee.nationality': 'ජාතිකත්වය',
@@ -554,8 +556,15 @@ export const si = Object.freeze({
   'dashboard.byPriorityHint': 'ප්‍රමුඛත්වයක් තෝරා එය ලැයිස්තුවට බලන්න.',
   'dashboard.bySenderType': 'එවන්නාගේ වර්ගය අනුව',
   'dashboard.bySenderTypeHint': 'මඳ්දෙනේ මුල් ලිපි ලබාගන්නේ කවුද නිසා.',
+  'dashboard.myByStateHint':
+    'ඔබට පවරා ඇති ගොනු දැන් පිහිටා ඇති තත්ත්වය — ලැයිස්තුවට තෝරන්න.',
+  'dashboard.mySenderTypeHint': 'ඔබට පවරා ඇති ලිපි එවන්නේ කවුද.',
+  'dashboard.myLetters': 'මගේ ලිපි',
+  'dashboard.myLettersHint': 'ඔබට පවරා ඇති සියලු ලිපි',
   'dashboard.latestLetters': 'නවතම ලිපි',
-  'dashboard.latestHint': 'මෑතදී ලැබුණු ලිපි හ' ,
+  'dashboard.latestHint': 'මෑතදී ලැබුණු ලිපි හ',
+  'dashboard.myLatestLetters': 'මගේ නවතම ලිපි',
+  'dashboard.myLatestHint': 'ඔබට පවරා ඇති නවතම ලිපි හය.',
   'dashboard.openRegistry': 'ලැයිස්තුව විවෘත කරන්න',
   'dashboard.noLetters': 'තවම ලිපි නොමැත.',
   'dashboard.lettersOnRecord': 'ලියාපදිංචි ලිපි',

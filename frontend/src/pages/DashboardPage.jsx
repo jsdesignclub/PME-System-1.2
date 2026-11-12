@@ -9,9 +9,13 @@
  *     own BRANCH's: `mail_stats_rows()` scopes a non-central clerk to their
  *     department. A clerk who runs one branch's letters must see that branch's
  *     progress and no other branch's.
- *   * Everyone else — officers — gets their own queue, because a transport
- *     officer opening a dashboard that counts the whole province's letters is
- *     looking at a number that is not theirs and has nothing to act on.
+ *   * Officers get the SAME figures dashboard, but scoped to their OWN assigned
+ *     letters: the server refuses to aggregate anybody else's rows for them, and
+ *     every list and drill-down carries their officer id. A transport officer
+ *     opening a dashboard that counts the whole province's letters is looking at
+ *     a number that is not theirs; their own completion record is the one they
+ *     can act on.
+ *   * Any remaining role gets the personal queue.
  *
  * Nothing on this page calls axios directly. `mailApi` owns the endpoints and
  * `errorMessage` owns the shape of a failure, so the two dashboard modes below
@@ -64,21 +68,26 @@ export default function DashboardPage() {
   // unreachable for EVERY user including the administrator, and nobody saw an
   // error: the personal queue is a perfectly plausible page to be on.
   const canReadAllMail = permissions.includes('READ_ALL_MAIL');
-  // Subject clerks and department heads get the figures dashboard too. The SERVER
-  // decides the scope: `mail_stats_rows()` returns ministry figures for an
-  // executive and central clerk, and the clerk's or department head's own branch
-  // for anyone else.
+  // Subject clerks, department heads and officers get the figures dashboard too.
+  // The SERVER decides the scope: `mail_stats_rows()` returns ministry figures
+  // for an executive and central clerk, the clerk's or department head's own
+  // branch for those roles, and the officer's own assigned letters for an
+  // officer.
+  const isOfficer = user?.role === 'OFFICER' || user?.role === 'TRANSPORT_OFFICER';
   const canViewStats =
-    canReadAllMail || user?.role === 'SUBJECT_CLERK' || user?.role === 'DEPARTMENT_HEAD';
+    canReadAllMail ||
+    isOfficer ||
+    user?.role === 'SUBJECT_CLERK' ||
+    user?.role === 'DEPARTMENT_HEAD';
 
   return canViewStats ? (
-    <StatsDashboard user={user} permissions={permissions} />
+    <StatsDashboard user={user} permissions={permissions} personal={isOfficer} />
   ) : (
     <QueueDashboard user={user} permissions={permissions} />
   );
 }
 
-function StatsDashboard({ user, permissions }) {
+function StatsDashboard({ user, permissions, personal = false }) {
   const { t } = useLanguage();
   const [data, setData] = useState(null);
   const [failure, setFailure] = useState('');
@@ -91,15 +100,21 @@ function StatsDashboard({ user, permissions }) {
 
   // Who may see every department's letters. A branch clerk may not: the recent
   // list and every drill-down are narrowed to their own department, so the figures
-  // above and the rows behind them describe the same branch.
+  // above and the rows behind them describe the same branch. An officer is
+  // narrower still — their own assigned letters — and the figures function uses
+  // the same `auth.uid()` scope server-side.
   const canReadAllMail = permissions.includes('READ_ALL_MAIL');
-  const seesAllDepartments = canReadAllMail || Boolean(user?.is_central_clerk);
+  const seesAllDepartments =
+    !personal && (canReadAllMail || Boolean(user?.is_central_clerk));
   const scope = useMemo(
-    () => ({
-      departmentId: seesAllDepartments ? undefined : user?.department_id,
-      canReadAllMail: seesAllDepartments,
-    }),
-    [seesAllDepartments, user?.department_id],
+    () =>
+      personal
+        ? { assignedOfficerId: user?.id }
+        : {
+            departmentId: seesAllDepartments ? undefined : user?.department_id,
+            canReadAllMail: seesAllDepartments,
+          },
+    [personal, seesAllDepartments, user?.department_id, user?.id],
   );
 
   useEffect(() => {
@@ -110,7 +125,7 @@ function StatsDashboard({ user, permissions }) {
     // is half-rendered while one of them is still in flight. The failure is
     // reported once, not twice — the first rejection wins and `Promise.all`
     // settles, so a user is never told about two errors for one click.
-    Promise.all([stats(), list({}, { limit: 6 }, scope)])
+    Promise.all([stats(scope), list({}, { limit: 6 }, scope)])
       .then(([figures, recent]) => {
         if (cancelled) return;
         // `list()` returns `{ rows, total }`, not `{ data }`. Reading `.data`
@@ -164,9 +179,11 @@ function StatsDashboard({ user, permissions }) {
     {
       id: 'all',
       icon: Files,
-      label: t('dashboard.lettersOnRecord'),
+      label: personal ? t('dashboard.myLetters') : t('dashboard.lettersOnRecord'),
       value: figures.totals.all,
-      hint: t('dashboard.lettersOnRecordHint'),
+      hint: personal
+        ? t('dashboard.myLettersHint')
+        : t('dashboard.lettersOnRecordHint'),
       filters: {},
       delay: 0,
     },
@@ -236,7 +253,7 @@ function StatsDashboard({ user, permissions }) {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card
           title={t('dashboard.byState')}
-          subtitle={t('dashboard.byStateHint')}
+          subtitle={personal ? t('dashboard.myByStateHint') : t('dashboard.byStateHint')}
         >
           <WorkflowStateChart
             byStatus={figures.by_status}
@@ -260,7 +277,12 @@ function StatsDashboard({ user, permissions }) {
             />
           </Card>
 
-          <Card title={t('dashboard.bySenderType')} subtitle={t('dashboard.bySenderTypeHint')}>
+          <Card
+            title={t('dashboard.bySenderType')}
+            subtitle={
+              personal ? t('dashboard.mySenderTypeHint') : t('dashboard.bySenderTypeHint')
+            }
+          >
             <SenderTypeChart
               rows={figures.by_sender_type}
               onSelect={(senderType) =>
@@ -279,8 +301,8 @@ function StatsDashboard({ user, permissions }) {
       </div>
 
       <Card
-        title={t('dashboard.latestLetters')}
-        subtitle={t('dashboard.latestHint')}
+        title={personal ? t('dashboard.myLatestLetters') : t('dashboard.latestLetters')}
+        subtitle={personal ? t('dashboard.myLatestHint') : t('dashboard.latestHint')}
         action={
           <Link to="/mail" className="text-sm font-medium text-ink underline hover:text-brand">
             {t('dashboard.openRegistry')}
@@ -304,10 +326,9 @@ function StatsDashboard({ user, permissions }) {
 }
 
 /**
- * The personal queue. Same endpoint, no filters — the registry scopes itself to
- * what this user may see, so an officer gets exactly their assigned letters and
- * an intake clerk exactly the letters they logged. The client sends no role
- * parameter and cannot widen its own scope.
+ * The personal queue, kept for roles that have no figures view (MINOR_STAFF).
+ * Same endpoint, no filters — the registry scopes itself to what this user may
+ * see. The client sends no role parameter and cannot widen its own scope.
  */
 function QueueDashboard({ user, permissions }) {
   const { t } = useLanguage();

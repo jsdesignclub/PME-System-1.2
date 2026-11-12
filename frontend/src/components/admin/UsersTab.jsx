@@ -174,6 +174,12 @@ export function UsersTab() {
         </span>
       ),
     },
+    {
+      key: 'email',
+      header: t('users.email'),
+      className: 'text-slate-600',
+      render: (row) => row.email || '—',
+    },
     { key: 'nic_no', header: t('users.nic'), className: 'font-mono text-xs whitespace-nowrap' },
     { key: 'role', header: t('common.role'), render: (row) => <RoleBadge role={row.role} /> },
     { key: 'designation', header: t('users.designation'), className: 'text-slate-600' },

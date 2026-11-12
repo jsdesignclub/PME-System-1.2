@@ -52,6 +52,11 @@ export default function MailRegistryPage() {
   // every department, so the registry must not be narrowed to their own
   // department locally — RLS already decides what they may see.
   const seesAllDepartments = canReadAllMail || Boolean(user?.is_central_clerk);
+  // An officer's registry is their own assigned queue, not their branch's. RLS
+  // already enforces that; the explicit id keeps this page's rows identical to
+  // the dashboard's figures and drill-downs.
+  const isOfficer = user?.role === 'OFFICER' || user?.role === 'TRANSPORT_OFFICER';
+  const assignedOfficerId = isOfficer ? user?.id : undefined;
 
   const [searchParams] = useSearchParams();
 
@@ -110,7 +115,11 @@ export default function MailRegistryPage() {
     setFailure('');
     setNotice('');
 
-    const options = { departmentId: user?.department_id, canReadAllMail: seesAllDepartments };
+    const options = {
+      departmentId: isOfficer ? undefined : user?.department_id,
+      canReadAllMail: seesAllDepartments,
+      assignedOfficerId,
+    };
     // 'All' pages through the whole filtered set (the server caps one response),
     // so a large registry still arrives complete. A numeric choice is a normal
     // server-side page.
@@ -129,7 +138,7 @@ export default function MailRegistryPage() {
       .finally(() => {
         if (id === requestId.current) setLoading(false);
       });
-  }, [applied, offset, sort, pageSize, user?.department_id, seesAllDepartments]);
+  }, [applied, offset, sort, pageSize, user?.department_id, seesAllDepartments, isOfficer, assignedOfficerId]);
 
   useEffect(load, [load]);
 
@@ -169,7 +178,11 @@ export default function MailRegistryPage() {
     };
   }, [printRows]);
 
-  const exportOptions = { departmentId: user?.department_id, canReadAllMail: seesAllDepartments };
+  const exportOptions = {
+    departmentId: isOfficer ? undefined : user?.department_id,
+    canReadAllMail: seesAllDepartments,
+    assignedOfficerId,
+  };
 
   async function handleExportCsv() {
     setExporting('csv');

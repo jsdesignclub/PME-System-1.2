@@ -32,6 +32,13 @@ export async function list(filters = {}, paging = {}, options = {}) {
     query = query.eq('department_id', options.departmentId);
   }
 
+  // An officer's dashboard is their OWN queue, not their branch's. RLS already
+  // limits them to assigned letters; stating the assignment here keeps the
+  // figures, the recent list and every drill-down describing the same set.
+  if (options.assignedOfficerId) {
+    query = query.eq('assigned_officer_id', options.assignedOfficerId);
+  }
+
   // Sort is server-side so it applies to the WHOLE result set, not just the
   // rows on the current page. `paging.sort` is the table's current column choice;
   // without one the registry keeps its own default, newest letter first.
@@ -145,14 +152,28 @@ export async function getById(id) {
   return data;
 }
 
-export async function stats() {
+export async function stats(scope = {}) {
   // `mail_records` SELECT is RLS-scoped, so reading the table here would hand a
   // monitoring role a dashboard of its own queue. `mail_stats_rows` is a
-  // SECURITY DEFINER function: ministry-wide by design, and it refuses anyone
-  // outside ADMIN / SECRETARY / CHIEF_CLERK / AO. The aggregation stays here so
-  // the figures and the chart shapes are defined in one place.
-  const { data: all, error } = await supabase.rpc('mail_stats_rows');
-  if (error) throw error;
+  // SECURITY DEFINER function: ministry-wide for executives, the caller's branch
+  // for an ordinary subject clerk, and the caller's OWN assigned letters for an
+  // officer. The aggregation stays here so the figures and the chart shapes are
+  // defined in one place.
+  const { data, error } = await supabase.rpc('mail_stats_rows');
+
+  let all = data;
+  if (error) {
+    // A live database that has not yet run patch_officer_dashboard.sql still
+    // refuses OFFICER/TRANSPORT_OFFICER from the function. Their own rows are
+    // already RLS-scoped, so an officer can still get the same shape by reading
+    // their assigned queue and aggregating it here. Any other failure is real.
+    const refused =
+      error.code === '42501' || /not authorized/i.test(error.message ?? '');
+    if (!scope.assignedOfficerId || !refused) throw error;
+
+    all = await listAll({}, { assignedOfficerId: scope.assignedOfficerId });
+  }
+
   if (!all) return { by_status: {}, by_priority: {}, by_category: {}, by_sender_type: {}, daily_intake: [], overdue: 0, totals: { all: 0, open: 0, completed: 0 } };
 
   const byStatus = {};
@@ -161,7 +182,7 @@ export async function stats() {
   const bySenderType = {};
   const dailyIntake = {};
   let overdue = 0;
-  let allCount = all.length;
+  const allCount = all.length;
   let openCount = 0;
   let completedCount = 0;
 
